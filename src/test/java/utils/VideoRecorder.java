@@ -7,12 +7,41 @@ import org.monte.screenrecorder.ScreenRecorder;
 import org.openqa.selenium.WebDriver;
 import java.awt.*;
 import java.io.File;
+import java.io.IOException;
 import static org.monte.media.FormatKeys.*;
 import static org.monte.media.VideoFormatKeys.*;
 
 public class VideoRecorder {
-    private static ScreenRecorder screenRecorder;
+    private static CustomScreenRecorder screenRecorder;
     private static boolean isRecording = false;
+
+    private static class CustomScreenRecorder extends ScreenRecorder {
+        private String fileName;
+
+        public CustomScreenRecorder(GraphicsConfiguration cfg, Rectangle captureArea, String fileName)
+                throws IOException, AWTException {
+            super(cfg, captureArea,
+                new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
+                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
+                    CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
+                    DepthKey, 24, FrameRateKey, Rational.valueOf(30),
+                    QualityKey, 1.0f,
+                    KeyFrameIntervalKey, 15 * 60),
+                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
+                    FrameRateKey, Rational.valueOf(30)),
+                null,
+                new File("target/videos"));
+            this.fileName = fileName;
+        }
+
+        @Override
+        protected File createMovieFile(Format fileFormat) throws IOException {
+            if (!movieFolder.exists()) {
+                movieFolder.mkdirs();
+            }
+            return new File(movieFolder, fileName);
+        }
+    }
 
     public static void startRecording(WebDriver driver, String testName) {
         if (isRecording) {
@@ -25,28 +54,17 @@ public class VideoRecorder {
             videoDir.mkdirs();
 
             // Get screen dimensions
+            Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+            Rectangle captureArea = new Rectangle(0, 0, screenSize.width, screenSize.height);
+
+            // Get graphics configuration
             GraphicsConfiguration gc = GraphicsEnvironment
                 .getLocalGraphicsEnvironment()
                 .getDefaultScreenDevice()
                 .getDefaultConfiguration();
 
-            // Create screen recorder
-            screenRecorder = new ScreenRecorder(
-                gc,
-                gc.getBounds(),
-                new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
-                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    DepthKey, 24, FrameRateKey, Rational.valueOf(15),
-                    QualityKey, 1.0f,
-                    KeyFrameIntervalKey, 15 * 60),
-                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
-                    FrameRateKey, Rational.valueOf(30)),
-                null,
-                new File(videoDir, testName + ".avi")
-            );
-
-            // Start recording
+            // Create and start recorder
+            screenRecorder = new CustomScreenRecorder(gc, captureArea, testName + ".avi");
             screenRecorder.start();
             isRecording = true;
 
@@ -64,11 +82,29 @@ public class VideoRecorder {
         }
 
         try {
-            // Stop recording
             screenRecorder.stop();
             isRecording = false;
 
-            System.out.println("Video recording completed: " + testName);
+            // Convert AVI to MP4
+            File aviFile = new File("target/videos/" + testName + ".avi");
+            if (aviFile.exists()) {
+                File mp4File = new File("target/videos/" + testName + ".mp4");
+                
+                ProcessBuilder processBuilder = new ProcessBuilder(
+                    "ffmpeg", "-i", aviFile.getAbsolutePath(),
+                    "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", mp4File.getAbsolutePath()
+                );
+                
+                Process process = processBuilder.start();
+                process.waitFor();
+
+                // Delete AVI file after conversion
+                if (mp4File.exists()) {
+                    aviFile.delete();
+                    System.out.println("Video saved: " + mp4File.getAbsolutePath());
+                }
+            }
 
         } catch (Exception e) {
             System.out.println("Failed to stop video recording: " + e.getMessage());
