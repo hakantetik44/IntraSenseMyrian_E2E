@@ -210,9 +210,9 @@ pipeline {
                         echo """
                             ⚠️ Xray upload failed:
                             🔴 Error: ${e.message}
-                            📝 Stack trace: ${e.printStackTrace()}
+                            📝 Stack trace: See Jenkins logs for details
                         """
-                        unstable "❌ Xray upload failed"
+                        unstable "❌ Xray upload failed: ${e.message}"
                     }
                 }
             }
