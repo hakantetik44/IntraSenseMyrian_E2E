@@ -28,41 +28,22 @@ public class VideoRecorder {
                 throw new IOException("Failed to create video directory: " + videoDir.getAbsolutePath());
             }
 
-            // Get screen dimensions and configuration
-            GraphicsConfiguration gc;
-            Rectangle screenBounds;
-            
-            try {
-                GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-                if (!ge.isHeadlessInstance()) {
-                    gc = ge.getDefaultScreenDevice().getDefaultConfiguration();
-                    screenBounds = gc.getBounds();
-                } else {
-                    // Headless mode - use default dimensions
-                    gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                            .getDefaultScreenDevice()
-                            .getDefaultConfiguration();
-                    screenBounds = new Rectangle(0, 0, 1920, 1080);
-                    System.out.println("Running in headless mode, using default dimensions: 1920x1080");
-                }
-            } catch (Exception e) {
-                System.out.println("Warning: Failed to get screen configuration, using defaults");
-                gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                        .getDefaultScreenDevice()
-                        .getDefaultConfiguration();
-                screenBounds = new Rectangle(0, 0, 1920, 1080);
-            }
+            // Get screen configuration
+            GraphicsConfiguration gc = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration();
 
-            // Configure the recorder
+            // Configure the recorder with minimal settings
             screenRecorder = new ScreenRecorder(
                 gc,
-                screenBounds,
+                null, // Record entire screen
                 new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
                     CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    DepthKey, (gc.getColorModel().getPixelSize() > 16) ? 24 : 16,
+                    DepthKey, 16,
                     FrameRateKey, Rational.valueOf(10),
-                    QualityKey, 0.7f,
+                    QualityKey, 0.5f,
                     KeyFrameIntervalKey, 15 * 60),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
                     FrameRateKey, Rational.valueOf(30)),
@@ -82,8 +63,6 @@ public class VideoRecorder {
             screenRecorder.start();
             isRecording = true;
             System.out.println("Started video recording: " + testName);
-            System.out.println("Screen dimensions: " + screenBounds.width + "x" + screenBounds.height);
-            System.out.println("Color depth: " + gc.getColorModel().getPixelSize() + " bits");
 
         } catch (Exception e) {
             System.out.println("Failed to start video recording: " + e.getMessage());

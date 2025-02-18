@@ -19,6 +19,13 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Selenium -->
         <dependency>
@@ -32,6 +39,13 @@
             <groupId>com.automation-remarks</groupId>
             <artifactId>video-recorder-junit</artifactId>
             <version>2.0</version>
+        </dependency>
+        
+        <!-- ATU Test Recorder -->
+        <dependency>
+            <groupId>com.github.atutesting</groupId>
+            <artifactId>ATUTestRecorder_2.1</artifactId>
+            <version>master-SNAPSHOT</version>
         </dependency>
 
         <!-- Commons IO for File Operations -->
