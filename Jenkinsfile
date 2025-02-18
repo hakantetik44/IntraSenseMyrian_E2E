@@ -6,11 +6,38 @@ pipeline {
         jdk 'JDK17'
     }
 
+    environment {
+        GITHUB_REPO = 'https://github.com/hakantetik44/IntraSenseMyrian_E2E.git'
+    }
+
+    options {
+        // Build'i 1 saat sonra otomatik olarak sonlandır
+        timeout(time: 1, unit: 'HOURS')
+        // Aynı anda sadece bir build çalıştır
+        disableConcurrentBuilds()
+    }
+
     stages {
         stage('Initialize') {
             steps {
-                cleanWs()
-                checkout scm
+                script {
+                    // Workspace'i temizle
+                    cleanWs()
+                    // Repository'yi çek
+                    checkout scm
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    try {
+                        sh 'mvn clean install -DskipTests'
+                    } catch (Exception e) {
+                        error "Dependencies yüklenemedi: ${e.message}"
+                    }
+                }
             }
         }
 
@@ -19,7 +46,23 @@ pipeline {
                 script {
                     try {
                         sh """
+                            # Test klasörlerini oluştur
                             mkdir -p target/cucumber-reports
+                            mkdir -p target/allure-results
+                            mkdir -p target/videos
+                            mkdir -p target/screenshots
+
+                            # FFmpeg'in yüklü olduğunu kontrol et
+                            if ! command -v ffmpeg &> /dev/null; then
+                                echo "FFmpeg bulunamadı. Yükleniyor..."
+                                if [[ "$OSTYPE" == "darwin"* ]]; then
+                                    brew install ffmpeg
+                                elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+                                    sudo apt-get update && sudo apt-get install -y ffmpeg
+                                fi
+                            fi
+
+                            # Testleri çalıştır
                             mvn clean test
                         """
                         currentBuild.result = 'SUCCESS'
@@ -34,24 +77,31 @@ pipeline {
         stage('Generate Reports') {
             steps {
                 script {
-                    sh """
-                        mkdir -p test-reports
-                        mkdir -p target/allure-results
-                        cp -r target/cucumber-reports/* test-reports/ || true
-                        cp -r target/surefire-reports test-reports/ || true
-                        cp -r target/allure-results test-reports/ || true
-                        zip -r test-reports.zip test-reports/
-                    """
-                    
-                    // Generate and serve Allure report
-                    sh "mvn allure:report"
-                    allure([
-                        includeProperties: false,
-                        jdk: '',
-                        properties: [],
-                        reportBuildPolicy: 'ALWAYS',
-                        results: [[path: 'target/allure-results']]
-                    ])
+                    try {
+                        sh """
+                            # Report klasörlerini oluştur
+                            mkdir -p test-reports
+                            
+                            # Raporları kopyala
+                            cp -r target/cucumber-reports/* test-reports/ || true
+                            cp -r target/surefire-reports test-reports/ || true
+                            cp -r target/allure-results test-reports/ || true
+                            
+                            # Raporları arşivle
+                            zip -r test-reports.zip test-reports/
+                        """
+                        
+                        // Allure raporu oluştur
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: 'target/allure-results']]
+                        ])
+                    } catch (Exception e) {
+                        echo "Report generation failed: ${e.message}"
+                    }
                 }
             }
         }
@@ -89,19 +139,33 @@ pipeline {
             }
         }
 
-        stage('Archive Reports') {
+        stage('Archive Results') {
             steps {
-                archiveArtifacts(
-                    artifacts: 'test-reports.zip,target/cucumber-reports/**/*,target/allure-report/**/*',
-                    allowEmptyArchive: true
-                )
-                
-                cucumber(
-                    buildStatus: 'UNSTABLE',
-                    fileIncludePattern: '**/cucumber.json',
-                    jsonReportDirectory: 'target/cucumber-reports',
-                    reportTitle: 'Intrasense Web UI Test Report'
-                )
+                script {
+                    try {
+                        // Test sonuçlarını arşivle
+                        archiveArtifacts(
+                            artifacts: '''
+                                test-reports.zip,
+                                target/cucumber-reports/**/*,
+                                target/allure-results/**/*,
+                                target/videos/**/*,
+                                target/screenshots/**/*
+                            ''',
+                            allowEmptyArchive: true
+                        )
+                        
+                        // Cucumber raporu oluştur
+                        cucumber(
+                            buildStatus: 'UNSTABLE',
+                            fileIncludePattern: '**/cucumber.json',
+                            jsonReportDirectory: 'target/cucumber-reports',
+                            reportTitle: 'Intrasense Web UI Test Report'
+                        )
+                    } catch (Exception e) {
+                        echo "Archiving results failed: ${e.message}"
+                    }
+                }
             }
         }
     }
@@ -109,23 +173,25 @@ pipeline {
     post {
         always {
             script {
-                // Open Allure report in browser
-                if (isUnix()) {
+                // Allure raporunu aç
+                try {
                     sh 'mvn allure:serve -Dallure.serve.port=8080'
-                } else {
-                    bat 'mvn allure:serve -Dallure.serve.port=8080'
+                } catch (Exception e) {
+                    echo "Failed to serve Allure report: ${e.message}"
                 }
+                
+                // Workspace'i temizle
+                cleanWs()
             }
-            cleanWs()
         }
         success {
-            echo "✅ Tests completed successfully"
+            echo "✅ Pipeline başarıyla tamamlandı"
         }
         failure {
-            echo "❌ Tests failed"
+            echo "❌ Pipeline başarısız oldu"
         }
         unstable {
-            echo "⚠️ Tests are unstable"
+            echo "⚠️ Pipeline kararsız durumda"
         }
     }
 } 
