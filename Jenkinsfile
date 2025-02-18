@@ -65,18 +65,16 @@ pipeline {
                             reportTitle: 'Intrasense Web UI Test Report'
                         )
                         
-                        // Generate Allure Report (without browser)
+                        // Generate Allure Report
                         allure([
                             includeProperties: false,
                             jdk: '',
                             properties: [
-                                [key: 'allure.serve.skip', value: 'true'],
-                                [key: 'allure.report.open', value: 'false']
+                                [key: 'allure.results.directory', value: 'target/allure-results']
                             ],
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
-                            report: true,
-                            serve: false
+                            report: true
                         ])
                         
                         // Archive test artifacts
