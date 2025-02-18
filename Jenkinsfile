@@ -29,10 +29,18 @@ pipeline {
                     try {
                         sh '''
                             mkdir -p target/{cucumber-reports,allure-results,videos,screenshots}
+                            
+                            # Run tests with video recording and Allure enabled
                             mvn -B -Dallure.results.directory=target/allure-results \
+                                -Dvideo.folder=target/videos \
+                                -Dscreenshot.folder=target/screenshots \
                                 -Dallure.serve.skip=true \
                                 -Dallure.report.open=false \
                                 clean test
+                                
+                            # Check if videos were created
+                            echo "📹 Checking video recordings..."
+                            ls -la target/videos/ || true
                         '''
                     } catch (Exception e) {
                         echo """
@@ -68,8 +76,7 @@ pipeline {
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
                             report: true,
-                            serve: false,
-                            commandline: '/usr/local/bin/allure'
+                            serve: false
                         ])
                         
                         // Archive test artifacts
@@ -78,10 +85,18 @@ pipeline {
                                 target/cucumber-reports/**/*,
                                 target/allure-results/**/*,
                                 target/videos/**/*,
-                                target/screenshots/**/*
+                                target/screenshots/**/*,
+                                target/allure-report/**/*
                             ''',
                             allowEmptyArchive: true
                         )
+                        
+                        // Print report locations
+                        echo """
+                            📊 Test Reports Generated:
+                            🥒 Cucumber Report: ${BUILD_URL}cucumber-html-reports/overview-features.html
+                            📈 Allure Report: ${BUILD_URL}allure
+                        """
                     } catch (Exception e) {
                         echo "⚠️ Report generation failed: ${e.message}"
                     }

@@ -114,7 +114,29 @@
                             <name>allure.results.directory</name>
                             <value>${project.build.directory}/allure-results</value>
                         </property>
+                        <property>
+                            <name>allure.serve.skip</name>
+                            <value>true</value>
+                        </property>
+                        <property>
+                            <name>allure.report.open</name>
+                            <value>false</value>
+                        </property>
+                        <property>
+                            <name>video.folder</name>
+                            <value>${project.build.directory}/videos</value>
+                        </property>
+                        <property>
+                            <name>screenshot.folder</name>
+                            <value>${project.build.directory}/screenshots</value>
+                        </property>
                     </systemProperties>
+                    <properties>
+                        <property>
+                            <name>listener</name>
+                            <value>io.qameta.allure.junit4.AllureJunit4</value>
+                        </property>
+                    </properties>
                 </configuration>
                 <dependencies>
                     <dependency>
@@ -133,6 +155,7 @@
                     <resultsDirectory>${project.build.directory}/allure-results</resultsDirectory>
                     <reportDirectory>${project.build.directory}/allure-report</reportDirectory>
                     <serve>false</serve>
+                    <reportingOutputDirectory>${project.build.directory}/allure-report</reportingOutputDirectory>
                 </configuration>
             </plugin>
         </plugins>
