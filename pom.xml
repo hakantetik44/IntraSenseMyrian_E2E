@@ -24,6 +24,10 @@
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
+        <repository>
+            <id>sonatype</id>
+            <url>https://oss.sonatype.org/content/repositories/releases</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -41,11 +45,11 @@
             <version>2.0</version>
         </dependency>
         
-        <!-- ATU Test Recorder -->
+        <!-- Monte Media Library -->
         <dependency>
-            <groupId>com.github.atutesting</groupId>
-            <artifactId>ATUTestRecorder_2.1</artifactId>
-            <version>master-SNAPSHOT</version>
+            <groupId>com.github.stephenc.monte</groupId>
+            <artifactId>monte-screen-recorder</artifactId>
+            <version>0.7.7.0</version>
         </dependency>
 
         <!-- Commons IO for File Operations -->
