@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'maven'
+        jdk 'JDK17'
+    }
+
+    stages {
+        stage('Initialize') {
+            steps {
+                cleanWs()
+                checkout scm
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                script {
+                    try {
+                        sh """
+                            mkdir -p target/cucumber-reports
+                            mvn clean test
+                        """
+                        currentBuild.result = 'SUCCESS'
+                    } catch (Exception e) {
+                        currentBuild.result = 'UNSTABLE'
+                        echo "Test execution failed: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('Generate Reports') {
+            steps {
+                script {
+                    sh """
+                        mkdir -p test-reports
+                        mkdir -p target/allure-results
+                        cp -r target/cucumber-reports/* test-reports/ || true
+                        cp -r target/surefire-reports test-reports/ || true
+                        cp -r target/allure-results test-reports/ || true
+                        zip -r test-reports.zip test-reports/
+                    """
+                    
+                    // Generate and serve Allure report
+                    sh "mvn allure:report"
+                    allure([
+                        includeProperties: false,
+                        jdk: '',
+                        properties: [],
+                        reportBuildPolicy: 'ALWAYS',
+                        results: [[path: 'target/allure-results']]
+                    ])
+                }
+            }
+        }
+
+        stage('Generate Xray Results') {
+            steps {
+                withCredentials([string(credentialsId: 'xray-api-key', variable: 'XRAY_API_KEY')]) {
+                    script {
+                        sh """
+                            echo "Checking test results..."
+                            if [ ! -f "target/cucumber-reports/cucumber.json" ]; then
+                                echo "Error: cucumber.json not found!"
+                                exit 1
+                            fi
+                            
+                            echo "Uploading results to Xray Test Execution: SMF-2"
+                            curl -v -H "Content-Type: application/json" \
+                                 -H "Authorization: Bearer ${XRAY_API_KEY}" \
+                                 -X POST \
+                                 --data @target/cucumber-reports/cucumber.json \
+                                 "https://xray.cloud.getxray.app/api/v2/import/execution/cucumber/SMF-2" 2>&1 | tee xray-response.log
+                            
+                            if grep -q "error" xray-response.log; then
+                                echo "Error uploading to Xray:"
+                                cat xray-response.log
+                                exit 1
+                            else
+                                echo "Successfully uploaded test results to Xray"
+                            fi
+                        """
+                        
+                        archiveArtifacts artifacts: 'xray-response.log', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
+        stage('Archive Reports') {
+            steps {
+                archiveArtifacts(
+                    artifacts: 'test-reports.zip,target/cucumber-reports/**/*,target/allure-report/**/*',
+                    allowEmptyArchive: true
+                )
+                
+                cucumber(
+                    buildStatus: 'UNSTABLE',
+                    fileIncludePattern: '**/cucumber.json',
+                    jsonReportDirectory: 'target/cucumber-reports',
+                    reportTitle: 'Intrasense Web UI Test Report'
+                )
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                // Open Allure report in browser
+                if (isUnix()) {
+                    sh 'mvn allure:serve -Dallure.serve.port=8080'
+                } else {
+                    bat 'mvn allure:serve -Dallure.serve.port=8080'
+                }
+            }
+            cleanWs()
+        }
+        success {
+            echo "✅ Tests completed successfully"
+        }
+        failure {
+            echo "❌ Tests failed"
+        }
+        unstable {
+            echo "⚠️ Tests are unstable"
+        }
+    }
+} 
