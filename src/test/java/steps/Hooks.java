@@ -63,13 +63,21 @@ public class Hooks {
                 try {
                     byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
                     String mimeType = mp4File.exists() ? "video/mp4" : "video/x-msvideo";
+                    String extension = mp4File.exists() ? "mp4" : "avi";
                     
-                    Allure.addAttachment(
-                        "Test Recording Video", 
+                    // Create HTML5 video player markup
+                    String videoHtml = String.format(
+                        "<video width='100%%' height='100%%' controls>" +
+                        "<source src='data:%s;base64,%s' type='%s'>" +
+                        "Your browser does not support the video tag." +
+                        "</video>",
                         mimeType,
-                        new ByteArrayInputStream(videoBytes),
-                        mp4File.exists() ? ".mp4" : ".avi"
+                        java.util.Base64.getEncoder().encodeToString(videoBytes),
+                        mimeType
                     );
+                    
+                    // Attach as HTML
+                    Allure.addAttachment("Test Recording", "text/html", videoHtml, ".html");
                     
                     System.out.println("Video attached successfully: " + videoFile.getAbsolutePath() + 
                                      " (Size: " + videoFile.length() + " bytes)");
