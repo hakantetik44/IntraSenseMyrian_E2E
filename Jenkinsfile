@@ -50,12 +50,23 @@ pipeline {
                                 echo "📥 Installing FFmpeg..."
                                 if [[ "$OSTYPE" == "darwin"* ]]; then
                                     echo "🍎 macOS detected..."
-                                    which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-                                    export PATH="/usr/local/bin:$PATH"
-                                    brew install ffmpeg || true
+                                    # Check if Homebrew is installed
+                                    if ! command -v brew &> /dev/null; then
+                                        echo "🍺 Installing Homebrew..."
+                                        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+                                        # Add Homebrew to PATH
+                                        eval "$(/opt/homebrew/bin/brew shellenv)" || eval "$(/usr/local/bin/brew shellenv)" || true
+                                    fi
+                                    # Try to install ffmpeg
+                                    echo "🎥 Installing FFmpeg via Homebrew..."
+                                    brew install ffmpeg || brew upgrade ffmpeg || true
                                 else
                                     echo "🐧 Linux detected..."
-                                    sudo apt-get update && sudo apt-get install -y ffmpeg
+                                    if [ -x "$(command -v apt-get)" ]; then
+                                        sudo apt-get update && sudo apt-get install -y ffmpeg
+                                    elif [ -x "$(command -v yum)" ]; then
+                                        sudo yum install -y ffmpeg
+                                    fi
                                 fi
                             fi
                             
