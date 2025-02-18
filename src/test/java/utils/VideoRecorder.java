@@ -28,22 +28,41 @@ public class VideoRecorder {
                 throw new IOException("Failed to create video directory: " + videoDir.getAbsolutePath());
             }
 
-            // Get screen dimensions
-            GraphicsConfiguration gc = GraphicsEnvironment
-                .getLocalGraphicsEnvironment()
-                .getDefaultScreenDevice()
-                .getDefaultConfiguration();
-            Rectangle screenBounds = gc.getBounds();
+            // Get screen dimensions and configuration
+            GraphicsConfiguration gc;
+            Rectangle screenBounds;
+            
+            try {
+                GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+                if (!ge.isHeadlessInstance()) {
+                    gc = ge.getDefaultScreenDevice().getDefaultConfiguration();
+                    screenBounds = gc.getBounds();
+                } else {
+                    // Headless mode - use default dimensions
+                    gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                            .getDefaultScreenDevice()
+                            .getDefaultConfiguration();
+                    screenBounds = new Rectangle(0, 0, 1920, 1080);
+                    System.out.println("Running in headless mode, using default dimensions: 1920x1080");
+                }
+            } catch (Exception e) {
+                System.out.println("Warning: Failed to get screen configuration, using defaults");
+                gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice()
+                        .getDefaultConfiguration();
+                screenBounds = new Rectangle(0, 0, 1920, 1080);
+            }
 
-            // Configure the recorder with dynamic screen dimensions
+            // Configure the recorder
             screenRecorder = new ScreenRecorder(
                 gc,
                 screenBounds,
                 new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
                     CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    DepthKey, 24, FrameRateKey, Rational.valueOf(20),
-                    QualityKey, 1.0f,
+                    DepthKey, (gc.getColorModel().getPixelSize() > 16) ? 24 : 16,
+                    FrameRateKey, Rational.valueOf(10),
+                    QualityKey, 0.7f,
                     KeyFrameIntervalKey, 15 * 60),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
                     FrameRateKey, Rational.valueOf(30)),
@@ -52,7 +71,8 @@ public class VideoRecorder {
             ) {
                 @Override
                 protected File createMovieFile(Format fileFormat) throws IOException {
-                    File videoFile = new File(movieFolder, testName.replaceAll("\\s+", "_") + ".avi");
+                    String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
+                    File videoFile = new File(movieFolder, safeTestName + ".avi");
                     System.out.println("Creating video file: " + videoFile.getAbsolutePath());
                     return videoFile;
                 }
@@ -63,6 +83,7 @@ public class VideoRecorder {
             isRecording = true;
             System.out.println("Started video recording: " + testName);
             System.out.println("Screen dimensions: " + screenBounds.width + "x" + screenBounds.height);
+            System.out.println("Color depth: " + gc.getColorModel().getPixelSize() + " bits");
 
         } catch (Exception e) {
             System.out.println("Failed to start video recording: " + e.getMessage());
@@ -80,12 +101,13 @@ public class VideoRecorder {
         }
 
         try {
+            String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
             isRecording = false;
             screenRecorder.stop();
             System.out.println("Video recording stopped: " + testName);
             
             // Verify the video file
-            File videoFile = new File("target/videos/" + testName.replaceAll("\\s+", "_") + ".avi");
+            File videoFile = new File("target/videos/" + safeTestName + ".avi");
             if (videoFile.exists() && videoFile.length() > 0) {
                 System.out.println("Video file created successfully: " + videoFile.getAbsolutePath() + 
                                  " (Size: " + videoFile.length() + " bytes)");
