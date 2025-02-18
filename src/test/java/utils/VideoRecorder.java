@@ -1,73 +1,61 @@
 package utils;
 
-import org.monte.media.Format;
-import org.monte.media.Registry;
-import org.monte.media.math.Rational;
-import org.monte.screenrecorder.ScreenRecorder;
 import org.openqa.selenium.WebDriver;
+import javax.imageio.ImageIO;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
-import static org.monte.media.FormatKeys.*;
-import static org.monte.media.VideoFormatKeys.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class VideoRecorder {
-    private static CustomScreenRecorder screenRecorder;
+    private static Robot robot;
+    private static ScheduledExecutorService scheduler;
+    private static List<File> frames;
     private static boolean isRecording = false;
+    private static final int FRAME_RATE = 20; // frames per second
 
-    private static class CustomScreenRecorder extends ScreenRecorder {
-        private String fileName;
-
-        public CustomScreenRecorder(GraphicsConfiguration cfg, Rectangle captureArea, String fileName)
-                throws IOException, AWTException {
-            super(cfg, captureArea,
-                new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
-                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    DepthKey, 24, FrameRateKey, Rational.valueOf(30),
-                    QualityKey, 1.0f,
-                    KeyFrameIntervalKey, 15 * 60),
-                new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
-                    FrameRateKey, Rational.valueOf(30)),
-                null,
-                new File("target/videos"));
-            this.fileName = fileName;
-        }
-
-        @Override
-        protected File createMovieFile(Format fileFormat) throws IOException {
-            if (!movieFolder.exists()) {
-                movieFolder.mkdirs();
-            }
-            return new File(movieFolder, fileName);
+    static {
+        try {
+            robot = new Robot();
+        } catch (AWTException e) {
+            e.printStackTrace();
         }
     }
 
     public static void startRecording(WebDriver driver, String testName) {
-        if (isRecording) {
+        if (isRecording || robot == null) {
             return;
         }
 
         try {
-            // Create videos directory
+            // Create directories
             File videoDir = new File("target/videos");
+            File framesDir = new File("target/frames");
             videoDir.mkdirs();
+            framesDir.mkdirs();
 
-            // Get screen dimensions
-            Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-            Rectangle captureArea = new Rectangle(0, 0, screenSize.width, screenSize.height);
+            // Initialize frame list
+            frames = new ArrayList<>();
 
-            // Get graphics configuration
-            GraphicsConfiguration gc = GraphicsEnvironment
-                .getLocalGraphicsEnvironment()
-                .getDefaultScreenDevice()
-                .getDefaultConfiguration();
+            // Start capturing frames
+            scheduler = Executors.newSingleThreadScheduledExecutor();
+            scheduler.scheduleAtFixedRate(() -> {
+                try {
+                    Rectangle screenRect = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+                    BufferedImage capture = robot.createScreenCapture(screenRect);
+                    File frame = new File(framesDir, System.currentTimeMillis() + ".png");
+                    ImageIO.write(capture, "png", frame);
+                    frames.add(frame);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }, 0, 1000 / FRAME_RATE, TimeUnit.MILLISECONDS);
 
-            // Create and start recorder
-            screenRecorder = new CustomScreenRecorder(gc, captureArea, testName + ".avi");
-            screenRecorder.start();
             isRecording = true;
-
             System.out.println("Started video recording: " + testName);
 
         } catch (Exception e) {
@@ -77,40 +65,48 @@ public class VideoRecorder {
     }
 
     public static void stopRecording(String testName) {
-        if (!isRecording || screenRecorder == null) {
+        if (!isRecording || scheduler == null) {
             return;
         }
 
         try {
-            screenRecorder.stop();
+            // Stop frame capture
+            scheduler.shutdown();
+            scheduler.awaitTermination(5, TimeUnit.SECONDS);
             isRecording = false;
 
-            // Convert AVI to MP4
-            File aviFile = new File("target/videos/" + testName + ".avi");
-            if (aviFile.exists()) {
-                File mp4File = new File("target/videos/" + testName + ".mp4");
-                
+            // Create video from frames
+            if (!frames.isEmpty()) {
                 ProcessBuilder processBuilder = new ProcessBuilder(
-                    "ffmpeg", "-i", aviFile.getAbsolutePath(),
-                    "-c:v", "libx264", "-preset", "ultrafast",
-                    "-pix_fmt", "yuv420p", mp4File.getAbsolutePath()
+                    "ffmpeg",
+                    "-framerate", String.valueOf(FRAME_RATE),
+                    "-pattern_type", "glob",
+                    "-i", "target/frames/*.png",
+                    "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p",
+                    "-preset", "ultrafast",
+                    "-crf", "23",
+                    "target/videos/" + testName + ".mp4"
                 );
-                
+
                 Process process = processBuilder.start();
                 process.waitFor();
 
-                // Delete AVI file after conversion
-                if (mp4File.exists()) {
-                    aviFile.delete();
-                    System.out.println("Video saved: " + mp4File.getAbsolutePath());
+                // Clean up frames
+                for (File frame : frames) {
+                    frame.delete();
                 }
+                new File("target/frames").delete();
+
+                System.out.println("Video saved: target/videos/" + testName + ".mp4");
             }
 
         } catch (Exception e) {
             System.out.println("Failed to stop video recording: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            screenRecorder = null;
+            scheduler = null;
+            frames = null;
         }
     }
 } 

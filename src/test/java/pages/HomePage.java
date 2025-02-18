@@ -80,7 +80,7 @@ public class HomePage extends BasePage {
     @Step("Verifying 'Plateforme Myrian' heading is displayed")
     public boolean isPlatformeMyrianDisplayed() {
         try {
-            // Sayfa yüklenene kadar bekle
+            // Wait for page to load
             Thread.sleep(2000);
             return isElementDisplayed(PLATEFORME_MYRIAN_HEADING);
         } catch (InterruptedException e) {
@@ -92,22 +92,22 @@ public class HomePage extends BasePage {
     @Step("Scrolling to and verifying 'Les avantages Myrian' section")
     public boolean verifyLesAvantagesMyrianSection() {
         try {
-            // Sayfa yüklenene kadar bekle
+            // Wait for page to load
             Thread.sleep(2000);
             
-            // Elementi bul
+            // Find the element
             WebElement avantagesHeading = driver.findElement(LES_AVANTAGES_MYRIAN_SECTION);
             
-            // JavaScript ile smooth scroll yap
+            // Perform smooth scroll using JavaScript
             ((JavascriptExecutor) driver).executeScript(
                 "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
                 avantagesHeading
             );
             
-            // Scroll ve animasyonların tamamlanması için bekle
+            // Wait for scroll and animations to complete
             Thread.sleep(2000);
             
-            // Elementin görünür olduğunu ve doğru metni içerdiğini kontrol et
+            // Verify element is visible and contains correct text
             return avantagesHeading.isDisplayed() && 
                    avantagesHeading.getText().contains("Les avantages Myrian");
                    
