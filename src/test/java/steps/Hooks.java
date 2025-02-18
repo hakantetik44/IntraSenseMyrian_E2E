@@ -51,28 +51,37 @@ public class Hooks {
             Thread.sleep(2000);
             
             // Save video recording
-            String videoPath = "target/videos/" + testName + ".mp4";
-            File videoFile = new File(videoPath);
+            String mp4Path = "target/videos/" + testName + ".mp4";
+            String aviPath = "target/videos/" + testName + ".avi";
+            File mp4File = new File(mp4Path);
+            File aviFile = new File(aviPath);
             
-            if (videoFile.exists() && videoFile.length() > 0) {
+            // Try MP4 first, fallback to AVI if MP4 doesn't exist
+            File videoFile = mp4File.exists() ? mp4File : (aviFile.exists() ? aviFile : null);
+            String mimeType = mp4File.exists() ? "video/mp4" : "video/x-msvideo";
+            String extension = mp4File.exists() ? ".mp4" : ".avi";
+            
+            if (videoFile != null && videoFile.length() > 0) {
                 try {
                     // Attach video to Allure report using FileInputStream
                     try (FileInputStream fis = new FileInputStream(videoFile)) {
                         Allure.addAttachment(
                             "Test Recording", 
-                            "video/mp4",  // MIME type for MP4
+                            mimeType,
                             fis,
-                            ".mp4"
+                            extension
                         );
                     }
-                    System.out.println("Video attached successfully: " + videoPath + 
+                    System.out.println("Video attached successfully: " + videoFile.getAbsolutePath() + 
                                      " (Size: " + videoFile.length() + " bytes)");
                 } catch (Exception e) {
                     System.out.println("Failed to attach video: " + e.getMessage());
                     e.printStackTrace();
                 }
             } else {
-                System.out.println("Video file not found or empty: " + videoPath);
+                System.out.println("Video file not found or empty. Checked paths:");
+                System.out.println("- MP4: " + mp4Path);
+                System.out.println("- AVI: " + aviPath);
             }
             
             // Add test result status
