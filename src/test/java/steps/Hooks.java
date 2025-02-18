@@ -22,11 +22,10 @@ public class Hooks {
     
     @Before
     public void beforeScenario(Scenario scenario) {
+        String testName = scenario.getName().replaceAll("\\s+", "_");
+        
         // Start video recording before test begins
-        VideoRecorder.startRecording(
-            driverManager.getDriver(), 
-            scenario.getName().replaceAll("\\s+", "_")
-        );
+        VideoRecorder.startRecording(driverManager.getDriver(), testName);
         
         // Add scenario info to Allure report
         Allure.epic("Intrasense E2E Tests");
@@ -36,19 +35,36 @@ public class Hooks {
     
     @After
     public void afterScenario(Scenario scenario) {
+        String testName = scenario.getName().replaceAll("\\s+", "_");
+        
         try {
             // Take screenshot if test fails
             if (scenario.isFailed()) {
                 saveScreenshot(scenario.getName());
             }
             
-            // Stop video recording after test completion
-            VideoRecorder.stopRecording(
-                scenario.getName().replaceAll("\\s+", "_")
-            );
+            // Stop video recording
+            VideoRecorder.stopRecording(testName);
+            
+            // Wait a bit for the file to be fully written
+            Thread.sleep(2000);
             
             // Save video recording
-            saveVideo(scenario.getName());
+            String videoPath = "target/videos/" + testName + ".avi";
+            File videoFile = new File(videoPath);
+            
+            if (videoFile.exists() && videoFile.length() > 0) {
+                try {
+                    byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
+                    Allure.addAttachment("Video Recording", "video/avi", new ByteArrayInputStream(videoBytes), ".avi");
+                    System.out.println("Video attached successfully: " + videoPath + " (Size: " + videoFile.length() + " bytes)");
+                } catch (Exception e) {
+                    System.out.println("Failed to attach video: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("Video file not found or empty: " + videoPath);
+            }
             
             // Add test result status
             if (scenario.isFailed()) {
@@ -60,7 +76,8 @@ public class Hooks {
             }
             
         } catch (Exception e) {
-            System.out.println("Failed to capture video or screenshot: " + e.getMessage());
+            System.out.println("Failed to capture evidence: " + e.getMessage());
+            e.printStackTrace();
             saveTestStatus("⚠️ Evidence Capture Failed: " + e.getMessage());
         } finally {
             // Close browser
@@ -73,20 +90,6 @@ public class Hooks {
     @Attachment(value = "Screenshot", type = "image/png")
     private byte[] saveScreenshot(String scenarioName) {
         return ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
-    }
-
-    @Attachment(value = "Video Recording", type = "video/mp4")
-    private byte[] saveVideo(String scenarioName) {
-        try {
-            String videoPath = "target/videos/" + scenarioName.replaceAll("\\s+", "_") + ".mp4";
-            File videoFile = new File(videoPath);
-            if (videoFile.exists()) {
-                return Files.readAllBytes(videoFile.toPath());
-            }
-        } catch (Exception e) {
-            System.out.println("Failed to attach video: " + e.getMessage());
-        }
-        return null;
     }
 
     @Attachment(value = "Test Status", type = "text/plain")
