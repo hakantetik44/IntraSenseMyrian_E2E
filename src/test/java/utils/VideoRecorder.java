@@ -53,9 +53,9 @@ public class VideoRecorder {
                 @Override
                 protected File createMovieFile(Format fileFormat) throws IOException {
                     String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-                    File videoFile = new File(movieFolder, safeTestName + ".avi");
-                    System.out.println("Creating video file: " + videoFile.getAbsolutePath());
-                    return videoFile;
+                    File aviFile = new File(movieFolder, safeTestName + "_temp.avi");
+                    System.out.println("Creating temporary AVI file: " + aviFile.getAbsolutePath());
+                    return aviFile;
                 }
             };
 
@@ -85,13 +85,39 @@ public class VideoRecorder {
             screenRecorder.stop();
             System.out.println("Video recording stopped: " + testName);
             
-            // Verify the video file
-            File videoFile = new File("target/videos/" + safeTestName + ".avi");
-            if (videoFile.exists() && videoFile.length() > 0) {
-                System.out.println("Video file created successfully: " + videoFile.getAbsolutePath() + 
-                                 " (Size: " + videoFile.length() + " bytes)");
+            // Convert AVI to MP4
+            File aviFile = new File("target/videos/" + safeTestName + "_temp.avi");
+            File mp4File = new File("target/videos/" + safeTestName + ".mp4");
+            
+            if (aviFile.exists() && aviFile.length() > 0) {
+                try {
+                    // Use FFmpeg to convert AVI to MP4
+                    ProcessBuilder processBuilder = new ProcessBuilder(
+                        "ffmpeg",
+                        "-i", aviFile.getAbsolutePath(),
+                        "-c:v", "libx264",
+                        "-preset", "ultrafast",
+                        "-pix_fmt", "yuv420p",
+                        mp4File.getAbsolutePath()
+                    );
+                    
+                    Process process = processBuilder.start();
+                    process.waitFor();
+                    
+                    // Delete temporary AVI file
+                    if (mp4File.exists() && mp4File.length() > 0) {
+                        aviFile.delete();
+                        System.out.println("Video converted and saved: " + mp4File.getAbsolutePath() + 
+                                         " (Size: " + mp4File.length() + " bytes)");
+                    } else {
+                        System.out.println("Failed to convert video to MP4");
+                    }
+                } catch (Exception e) {
+                    System.out.println("Failed to convert video: " + e.getMessage());
+                    e.printStackTrace();
+                }
             } else {
-                System.out.println("Warning: Video file is missing or empty: " + videoFile.getAbsolutePath());
+                System.out.println("Temporary AVI file not found or empty: " + aviFile.getAbsolutePath());
             }
 
         } catch (Exception e) {

@@ -51,7 +51,7 @@ public class Hooks {
             Thread.sleep(2000);
             
             // Save video recording
-            String videoPath = "target/videos/" + testName + ".avi";
+            String videoPath = "target/videos/" + testName + ".mp4";
             File videoFile = new File(videoPath);
             
             if (videoFile.exists() && videoFile.length() > 0) {
@@ -60,9 +60,9 @@ public class Hooks {
                     try (FileInputStream fis = new FileInputStream(videoFile)) {
                         Allure.addAttachment(
                             "Test Recording", 
-                            "video/x-msvideo",  // Correct MIME type for AVI
+                            "video/mp4",  // MIME type for MP4
                             fis,
-                            ".avi"
+                            ".mp4"
                         );
                     }
                     System.out.println("Video attached successfully: " + videoPath + 
