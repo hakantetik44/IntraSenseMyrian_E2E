@@ -14,36 +14,43 @@ import static org.monte.media.VideoFormatKeys.*;
 public class VideoRecorder {
     private static ScreenRecorder screenRecorder;
     private static boolean isRecording = false;
+    private static String currentVideoPath;
 
     public static void startRecording(WebDriver driver, String testName) {
         if (isRecording) {
-            System.out.println("Video recording already in progress");
+            System.out.println("[VideoRecorder] Recording already in progress");
             return;
         }
 
         try {
+            System.out.println("[VideoRecorder] Starting video recording for test: " + testName);
+            
             // Create videos directory
             File videoDir = new File("target/videos");
             if (!videoDir.exists() && !videoDir.mkdirs()) {
                 throw new IOException("Failed to create video directory: " + videoDir.getAbsolutePath());
             }
+            System.out.println("[VideoRecorder] Video directory: " + videoDir.getAbsolutePath());
 
             // Get screen configuration
             GraphicsConfiguration gc = GraphicsEnvironment
                 .getLocalGraphicsEnvironment()
                 .getDefaultScreenDevice()
                 .getDefaultConfiguration();
+            
+            Rectangle screenBounds = gc.getBounds();
+            System.out.println("[VideoRecorder] Screen dimensions: " + screenBounds.width + "x" + screenBounds.height);
 
-            // Configure the recorder with minimal settings
+            // Configure the recorder
             screenRecorder = new ScreenRecorder(
                 gc,
-                null, // Record entire screen
+                screenBounds,  // Record full screen
                 new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
                     CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                    DepthKey, 16,
-                    FrameRateKey, Rational.valueOf(10),
-                    QualityKey, 0.5f,
+                    DepthKey, 24,
+                    FrameRateKey, Rational.valueOf(20),
+                    QualityKey, 1.0f,
                     KeyFrameIntervalKey, 15 * 60),
                 new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey, "black",
                     FrameRateKey, Rational.valueOf(30)),
@@ -54,7 +61,8 @@ public class VideoRecorder {
                 protected File createMovieFile(Format fileFormat) throws IOException {
                     String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
                     File aviFile = new File(movieFolder, safeTestName + "_temp.avi");
-                    System.out.println("Creating temporary AVI file: " + aviFile.getAbsolutePath());
+                    currentVideoPath = aviFile.getAbsolutePath();
+                    System.out.println("[VideoRecorder] Creating temporary video file: " + currentVideoPath);
                     return aviFile;
                 }
             };
@@ -62,35 +70,44 @@ public class VideoRecorder {
             // Start recording
             screenRecorder.start();
             isRecording = true;
-            System.out.println("Started video recording: " + testName);
+            System.out.println("[VideoRecorder] Recording started successfully");
 
         } catch (Exception e) {
-            System.out.println("Failed to start video recording: " + e.getMessage());
+            System.out.println("[VideoRecorder] Failed to start recording: " + e.getMessage());
             e.printStackTrace();
-            // Reset state in case of failure
             screenRecorder = null;
             isRecording = false;
+            currentVideoPath = null;
         }
     }
 
     public static void stopRecording(String testName) {
         if (!isRecording || screenRecorder == null) {
-            System.out.println("No active video recording to stop");
+            System.out.println("[VideoRecorder] No active recording to stop");
             return;
         }
 
         try {
+            System.out.println("[VideoRecorder] Stopping video recording for test: " + testName);
+            
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
             isRecording = false;
             screenRecorder.stop();
-            System.out.println("Video recording stopped: " + testName);
             
             // Convert AVI to MP4
-            File aviFile = new File("target/videos/" + safeTestName + "_temp.avi");
+            File aviFile = new File(currentVideoPath);
             File mp4File = new File("target/videos/" + safeTestName + ".mp4");
+            
+            System.out.println("[VideoRecorder] Checking temporary AVI file: " + aviFile.getAbsolutePath());
+            System.out.println("[VideoRecorder] AVI file exists: " + aviFile.exists());
+            if (aviFile.exists()) {
+                System.out.println("[VideoRecorder] AVI file size: " + aviFile.length() + " bytes");
+            }
             
             if (aviFile.exists() && aviFile.length() > 0) {
                 try {
+                    System.out.println("[VideoRecorder] Converting AVI to MP4...");
+                    
                     // Use FFmpeg to convert AVI to MP4
                     ProcessBuilder processBuilder = new ProcessBuilder(
                         "ffmpeg",
@@ -98,33 +115,39 @@ public class VideoRecorder {
                         "-c:v", "libx264",
                         "-preset", "ultrafast",
                         "-pix_fmt", "yuv420p",
+                        "-y",  // Overwrite output file if it exists
                         mp4File.getAbsolutePath()
                     );
                     
+                    processBuilder.redirectErrorStream(true);
                     Process process = processBuilder.start();
-                    process.waitFor();
                     
-                    // Delete temporary AVI file
+                    // Wait for conversion to complete
+                    int exitCode = process.waitFor();
+                    System.out.println("[VideoRecorder] FFmpeg conversion exit code: " + exitCode);
+                    
+                    // Verify conversion result
                     if (mp4File.exists() && mp4File.length() > 0) {
                         aviFile.delete();
-                        System.out.println("Video converted and saved: " + mp4File.getAbsolutePath() + 
+                        System.out.println("[VideoRecorder] Video converted successfully: " + mp4File.getAbsolutePath() + 
                                          " (Size: " + mp4File.length() + " bytes)");
                     } else {
-                        System.out.println("Failed to convert video to MP4");
+                        System.out.println("[VideoRecorder] Failed to convert video. MP4 file not created or empty.");
                     }
                 } catch (Exception e) {
-                    System.out.println("Failed to convert video: " + e.getMessage());
+                    System.out.println("[VideoRecorder] Failed to convert video: " + e.getMessage());
                     e.printStackTrace();
                 }
             } else {
-                System.out.println("Temporary AVI file not found or empty: " + aviFile.getAbsolutePath());
+                System.out.println("[VideoRecorder] No temporary AVI file found or file is empty");
             }
 
         } catch (Exception e) {
-            System.out.println("Failed to stop video recording: " + e.getMessage());
+            System.out.println("[VideoRecorder] Failed to stop recording: " + e.getMessage());
             e.printStackTrace();
         } finally {
             screenRecorder = null;
+            currentVideoPath = null;
         }
     }
 } 
