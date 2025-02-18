@@ -32,8 +32,11 @@ pipeline {
                             # Set logging levels to reduce verbose output
                             export MAVEN_OPTS="-Dorg.slf4j.simpleLogger.defaultLogLevel=warn -Dorg.slf4j.simpleLogger.log.org.apache=warn"
                             
-                            # Run tests with minimal console output
-                            mvn -B -Dorg.slf4j.simpleLogger.defaultLogLevel=warn clean test
+                            # Run tests with minimal console output and suppress Selenium warnings
+                            mvn -B -Dorg.slf4j.simpleLogger.defaultLogLevel=warn \
+                                -Djava.util.logging.config.file=logging.properties \
+                                -Dselenium.webdriver.logging.level=SEVERE \
+                                clean test
                         '''
                     } catch (Exception e) {
                         echo """
@@ -58,13 +61,14 @@ pipeline {
                             reportTitle: 'Intrasense Web UI Test Report'
                         )
                         
-                        // Generate Allure Report
+                        // Generate Allure Report (without opening browser)
                         allure([
                             includeProperties: false,
                             jdk: '',
                             properties: [],
                             reportBuildPolicy: 'ALWAYS',
-                            results: [[path: 'target/allure-results']]
+                            results: [[path: 'target/allure-results']],
+                            report: false
                         ])
                         
                         // Archive test artifacts
