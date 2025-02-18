@@ -76,6 +76,9 @@ pipeline {
                             results: [[path: 'target/allure-results']],
                             report: true
                         ])
+
+                        // Publish Allure Report
+                        allureReport()
                         
                         // Archive test artifacts
                         archiveArtifacts(
