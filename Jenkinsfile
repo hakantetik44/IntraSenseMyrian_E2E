@@ -36,6 +36,8 @@ pipeline {
                             mvn -B -Dorg.slf4j.simpleLogger.defaultLogLevel=warn \
                                 -Djava.util.logging.config.file=logging.properties \
                                 -Dselenium.webdriver.logging.level=SEVERE \
+                                -Dallure.serve.skip=true \
+                                -Dallure.report.open=false \
                                 clean test
                         '''
                     } catch (Exception e) {
@@ -61,14 +63,18 @@ pipeline {
                             reportTitle: 'Intrasense Web UI Test Report'
                         )
                         
-                        // Generate Allure Report (without opening browser)
+                        // Generate Allure Report (without browser)
                         allure([
                             includeProperties: false,
                             jdk: '',
-                            properties: [],
+                            properties: [
+                                [key: 'allure.serve.skip', value: 'true'],
+                                [key: 'allure.report.open', value: 'false']
+                            ],
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
-                            report: false
+                            report: false,
+                            serve: false
                         ])
                         
                         // Archive test artifacts
