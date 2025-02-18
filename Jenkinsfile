@@ -18,75 +18,27 @@ pipeline {
         timestamps()
         timeout(time: 1, unit: 'HOURS')
         disableConcurrentBuilds()
+        ansiColor('xterm')
     }
 
     stages {
-        stage('🔍 Initialize') {
-            steps {
-                script {
-                    sh '''
-                        echo "🔧 Environment Information:"
-                        echo "☕ JAVA_HOME: $JAVA_HOME"
-                        echo "🛠️ PATH: $PATH"
-                        echo "📝 Java Version:"
-                        java -version
-                        echo "🏗️ Maven Version:"
-                        mvn -version
-                    '''
-                }
-            }
-        }
-
         stage('🧪 Run Tests') {
             steps {
                 script {
                     try {
-                        echo "📂 Creating Test Directories..."
                         sh '''
-                            echo "🗂️ Setting up directories..."
                             mkdir -p target/{cucumber-reports,allure-results,videos,screenshots}
                             
-                            if ! command -v ffmpeg &> /dev/null; then
-                                echo "📥 Installing FFmpeg..."
-                                if [[ "$OSTYPE" == "darwin"* ]]; then
-                                    echo "🍎 macOS detected..."
-                                    # Check if Homebrew is installed
-                                    if ! command -v brew &> /dev/null; then
-                                        echo "🍺 Installing Homebrew..."
-                                        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
-                                        # Add Homebrew to PATH
-                                        eval "$(/opt/homebrew/bin/brew shellenv)" || eval "$(/usr/local/bin/brew shellenv)" || true
-                                    fi
-                                    # Try to install ffmpeg
-                                    echo "🎥 Installing FFmpeg via Homebrew..."
-                                    brew install ffmpeg || brew upgrade ffmpeg || true
-                                else
-                                    echo "🐧 Linux detected..."
-                                    if [ -x "$(command -v apt-get)" ]; then
-                                        sudo apt-get update && sudo apt-get install -y ffmpeg
-                                    elif [ -x "$(command -v yum)" ]; then
-                                        sudo yum install -y ffmpeg
-                                    fi
-                                fi
-                            fi
+                            # Set logging levels to reduce verbose output
+                            export MAVEN_OPTS="-Dorg.slf4j.simpleLogger.defaultLogLevel=warn -Dorg.slf4j.simpleLogger.log.org.apache=warn"
                             
-                            echo "🚀 Running Web Tests..."
-                            echo "⚡ Executing Maven Tests..."
-                            mvn clean test
-                        '''
-
-                        echo "📊 Checking Test Results:"
-                        sh '''
-                            echo "🥒 Cucumber Reports:"
-                            ls -la target/cucumber-reports/ || true
-                            echo "📈 Allure Results:"
-                            ls -la target/allure-results/ || true
+                            # Run tests with minimal console output
+                            mvn -B -Dorg.slf4j.simpleLogger.defaultLogLevel=warn clean test
                         '''
                     } catch (Exception e) {
                         echo """
                             ⚠️ Test Error:
                             🔴 Error Message: ${e.message}
-                            🏗️ Build: ${BUILD_NUMBER}
                         """
                         unstable "❌ Test execution failed: ${e.message}"
                     }
@@ -94,24 +46,19 @@ pipeline {
             }
         }
 
-        stage('📊 Generate Reports') {
+        stage('📊 Reports') {
             steps {
                 script {
                     try {
-                        sh '''
-                            echo "📁 Creating report directories..."
-                            mkdir -p test-reports
-                            echo "📋 Copying Cucumber reports..."
-                            cp -r target/cucumber-reports/* test-reports/ || true
-                            echo "📋 Copying Surefire reports..."
-                            cp -r target/surefire-reports test-reports/ || true
-                            echo "📋 Copying Allure results..."
-                            cp -r target/allure-results test-reports/ || true
-                            echo "🗜️ Compressing reports..."
-                            zip -r test-reports.zip test-reports/
-                        '''
+                        // Generate Cucumber Report
+                        cucumber(
+                            buildStatus: 'UNSTABLE',
+                            fileIncludePattern: '**/cucumber.json',
+                            jsonReportDirectory: 'target/cucumber-reports',
+                            reportTitle: 'Intrasense Web UI Test Report'
+                        )
                         
-                        echo "📈 Generating Allure report..."
+                        // Generate Allure Report
                         allure([
                             includeProperties: false,
                             jdk: '',
@@ -119,21 +66,10 @@ pipeline {
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']]
                         ])
-                    } catch (Exception e) {
-                        echo "⚠️ Report generation failed: ${e.message}"
-                    }
-                }
-            }
-        }
-
-        stage('📦 Archive Results') {
-            steps {
-                script {
-                    try {
-                        echo "📦 Archiving test artifacts..."
+                        
+                        // Archive test artifacts
                         archiveArtifacts(
                             artifacts: '''
-                                test-reports.zip,
                                 target/cucumber-reports/**/*,
                                 target/allure-results/**/*,
                                 target/videos/**/*,
@@ -141,16 +77,8 @@ pipeline {
                             ''',
                             allowEmptyArchive: true
                         )
-                        
-                        echo "🥒 Generating Cucumber report..."
-                        cucumber(
-                            buildStatus: 'UNSTABLE',
-                            fileIncludePattern: '**/cucumber.json',
-                            jsonReportDirectory: 'target/cucumber-reports',
-                            reportTitle: 'Intrasense Web UI Test Report'
-                        )
                     } catch (Exception e) {
-                        echo "⚠️ Archiving results failed: ${e.message}"
+                        echo "⚠️ Report generation failed: ${e.message}"
                     }
                 }
             }
@@ -159,65 +87,16 @@ pipeline {
 
     post {
         always {
-            script {
-                try {
-                    sh '''
-                        echo "🧹 Cleaning up workspace..."
-                        rm -rf target/allure-report || true
-                    '''
-                    
-                    echo "📊 Generating final Allure report..."
-                    allure([
-                        includeProperties: true,
-                        jdk: '',
-                        properties: [],
-                        reportBuildPolicy: 'ALWAYS',
-                        results: [[path: 'target/allure-results']]
-                    ])
-
-                    echo "📦 Archiving final artifacts..."
-                    archiveArtifacts artifacts: '''
-                        target/allure-results/**/*,
-                        target/cucumber-reports/**/*,
-                        target/videos/**/*,
-                        target/screenshots/**/*
-                    ''', allowEmptyArchive: true
-
-                    echo """
-                        📊 Test Results Summary:
-                        🌿 Branch: ${env.BRANCH_NAME ?: 'unknown'}
-                        🏗️ Build Status: ${currentBuild.currentResult}
-                        🔢 Build Number: #${BUILD_NUMBER}
-                        ⏱️ Duration: ${currentBuild.durationString}
-                    """
-                } catch (Exception e) {
-                    echo "⚠️ Post-build actions failed: ${e.message}"
-                } finally {
-                    echo "🧹 Cleaning workspace..."
-                    cleanWs()
-                }
-            }
+            cleanWs()
         }
         success {
-            echo """
-                ✅ Pipeline completed successfully
-                🎉 All tests passed
-                🚀 Build #${BUILD_NUMBER} is ready
-            """
-        }
-        failure {
-            echo """
-                ❌ Pipeline failed
-                💔 Build #${BUILD_NUMBER} failed
-                🔍 Please check the logs for details
-            """
+            echo "✅ Tests completed successfully"
         }
         unstable {
-            echo """
-                ⚠️ Pipeline is unstable
-                🟡 Build #${BUILD_NUMBER} is unstable
-                🔍 Some tests may have failed
-            """
+            echo "⚠️ Tests completed with issues"
+        }
+        failure {
+            echo "❌ Tests failed"
         }
     }
 } 
