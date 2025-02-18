@@ -28,17 +28,7 @@ pipeline {
                     try {
                         sh '''
                             mkdir -p target/{cucumber-reports,allure-results,videos,screenshots}
-                            
-                            # Set logging levels to reduce verbose output
-                            export MAVEN_OPTS="-Dorg.slf4j.simpleLogger.defaultLogLevel=warn -Dorg.slf4j.simpleLogger.log.org.apache=warn"
-                            
-                            # Run tests with minimal console output and suppress Selenium warnings
-                            mvn -B -Dorg.slf4j.simpleLogger.defaultLogLevel=warn \
-                                -Djava.util.logging.config.file=logging.properties \
-                                -Dselenium.webdriver.logging.level=SEVERE \
-                                -Dallure.serve.skip=true \
-                                -Dallure.report.open=false \
-                                clean test
+                            mvn -B -Dallure.results.directory=target/allure-results clean test -DskipAllureReport=true
                         '''
                     } catch (Exception e) {
                         echo """
@@ -67,13 +57,10 @@ pipeline {
                         allure([
                             includeProperties: false,
                             jdk: '',
-                            properties: [
-                                [key: 'allure.serve.skip', value: 'true'],
-                                [key: 'allure.report.open', value: 'false']
-                            ],
+                            properties: [],
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
-                            report: false,
+                            report: true,
                             serve: false
                         ])
                         
@@ -109,4 +96,4 @@ pipeline {
             echo "❌ Tests failed"
         }
     }
-} 
+}
