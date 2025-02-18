@@ -58,20 +58,19 @@ public class Hooks {
             
             // Try MP4 first, fallback to AVI if MP4 doesn't exist
             File videoFile = mp4File.exists() ? mp4File : (aviFile.exists() ? aviFile : null);
-            String mimeType = mp4File.exists() ? "video/mp4" : "video/x-msvideo";
-            String extension = mp4File.exists() ? ".mp4" : ".avi";
             
             if (videoFile != null && videoFile.length() > 0) {
                 try {
-                    // Attach video to Allure report using FileInputStream
-                    try (FileInputStream fis = new FileInputStream(videoFile)) {
-                        Allure.addAttachment(
-                            "Test Recording", 
-                            mimeType,
-                            fis,
-                            extension
-                        );
-                    }
+                    byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
+                    String mimeType = mp4File.exists() ? "video/mp4" : "video/x-msvideo";
+                    
+                    Allure.addAttachment(
+                        "Test Recording Video", 
+                        mimeType,
+                        new ByteArrayInputStream(videoBytes),
+                        mp4File.exists() ? ".mp4" : ".avi"
+                    );
+                    
                     System.out.println("Video attached successfully: " + videoFile.getAbsolutePath() + 
                                      " (Size: " + videoFile.length() + " bytes)");
                 } catch (Exception e) {
