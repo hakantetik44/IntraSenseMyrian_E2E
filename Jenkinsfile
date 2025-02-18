@@ -127,38 +127,91 @@ pipeline {
                                 exit 1
                             fi
                             
-                            echo "📤 Uploading results to Xray Test Execution: SMF-2"
+                            echo "📤 Preparing to upload results to Xray..."
                             echo "🔑 Authenticating with Xray..."
                             
-                            # Get Xray API token
-                            XRAY_TOKEN=\$(curl -H "Content-Type: application/json" -X POST --data @- https://xray.cloud.getxray.app/api/v2/authenticate <<EOF
-                            {
+                            # Create authentication payload
+                            echo '{
                                 "client_id": "${XRAY_CREDENTIALS_USR}",
                                 "client_secret": "${XRAY_CREDENTIALS_PSW}"
-                            }
-                            EOF
-                            )
+                            }' > auth.json
                             
-                            # Upload test results
-                            curl -H "Content-Type: application/json" \
-                                 -H "Authorization: Bearer \$XRAY_TOKEN" \
-                                 -X POST \
-                                 --data @target/cucumber-reports/cucumber.json \
-                                 "https://xray.cloud.getxray.app/api/v2/import/execution/cucumber/SMF-2" 2>&1 | tee xray-response.log
+                            # Get Xray API token with retry mechanism
+                            MAX_RETRIES=3
+                            RETRY_COUNT=0
+                            while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+                                echo "🔄 Authentication attempt \$((RETRY_COUNT + 1)) of \$MAX_RETRIES"
+                                
+                                XRAY_TOKEN=\$(curl -s -w '\\n%{http_code}' \\
+                                    -H "Content-Type: application/json" \\
+                                    -X POST \\
+                                    --data @auth.json \\
+                                    --retry 3 \\
+                                    --retry-delay 5 \\
+                                    --retry-max-time 30 \\
+                                    --connect-timeout 10 \\
+                                    "https://xray.cloud.getxray.app/api/v2/authenticate" | {
+                                        read RESPONSE
+                                        read STATUS
+                                        if [ "\$STATUS" = "200" ]; then
+                                            echo "\$RESPONSE"
+                                            return 0
+                                        else
+                                            echo ""
+                                            return 1
+                                        fi
+                                    })
+                                
+                                if [ ! -z "\$XRAY_TOKEN" ]; then
+                                    echo "✅ Successfully authenticated with Xray"
+                                    break
+                                else
+                                    echo "⚠️ Authentication failed, retrying..."
+                                    RETRY_COUNT=\$((RETRY_COUNT + 1))
+                                    if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
+                                        sleep 10
+                                    fi
+                                fi
+                            done
                             
-                            if grep -q "error" xray-response.log; then
-                                echo "❌ Error uploading to Xray:"
+                            if [ -z "\$XRAY_TOKEN" ]; then
+                                echo "❌ Failed to authenticate with Xray after \$MAX_RETRIES attempts"
+                                exit 1
+                            fi
+                            
+                            # Remove auth file
+                            rm -f auth.json
+                            
+                            echo "📤 Uploading test results to Xray..."
+                            UPLOAD_RESPONSE=\$(curl -s -w '\\n%{http_code}' \\
+                                -H "Content-Type: application/json" \\
+                                -H "Authorization: Bearer \$XRAY_TOKEN" \\
+                                -X POST \\
+                                --data @target/cucumber-reports/cucumber.json \\
+                                --retry 3 \\
+                                --retry-delay 5 \\
+                                --retry-max-time 30 \\
+                                --connect-timeout 10 \\
+                                "https://xray.cloud.getxray.app/api/v2/import/execution/cucumber/SMF-2" | tee xray-response.log)
+                            
+                            UPLOAD_STATUS=\$(echo "\$UPLOAD_RESPONSE" | tail -n1)
+                            if [ "\$UPLOAD_STATUS" = "200" ] || [ "\$UPLOAD_STATUS" = "201" ]; then
+                                echo "✅ Successfully uploaded test results to Xray"
+                            else
+                                echo "❌ Error uploading to Xray (Status: \$UPLOAD_STATUS):"
                                 cat xray-response.log
                                 exit 1
-                            else
-                                echo "✅ Successfully uploaded test results to Xray"
                             fi
                         """
                         
                         echo "📋 Archiving Xray response..."
                         archiveArtifacts artifacts: 'xray-response.log', allowEmptyArchive: true
                     } catch (Exception e) {
-                        echo "⚠️ Xray upload failed: ${e.message}"
+                        echo """
+                            ⚠️ Xray upload failed:
+                            🔴 Error: ${e.message}
+                            📝 Stack trace: ${e.printStackTrace()}
+                        """
                         unstable "❌ Xray upload failed"
                     }
                 }
