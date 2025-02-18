@@ -5,6 +5,7 @@ pipeline {
         JAVA_HOME = tool 'JDK17'
         PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
         ALLURE_HOME = tool 'Allure'
+        MAVEN_OPTS = '-Dallure.serve.skip=true -Dallure.report.open=false'
     }
 
     tools {
@@ -28,7 +29,10 @@ pipeline {
                     try {
                         sh '''
                             mkdir -p target/{cucumber-reports,allure-results,videos,screenshots}
-                            mvn -B -Dallure.results.directory=target/allure-results clean test -DskipAllureReport=true
+                            mvn -B -Dallure.results.directory=target/allure-results \
+                                -Dallure.serve.skip=true \
+                                -Dallure.report.open=false \
+                                clean test
                         '''
                     } catch (Exception e) {
                         echo """
@@ -57,11 +61,15 @@ pipeline {
                         allure([
                             includeProperties: false,
                             jdk: '',
-                            properties: [],
+                            properties: [
+                                [key: 'allure.serve.skip', value: 'true'],
+                                [key: 'allure.report.open', value: 'false']
+                            ],
                             reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
                             report: true,
-                            serve: false
+                            serve: false,
+                            commandline: '/usr/local/bin/allure'
                         ])
                         
                         // Archive test artifacts
