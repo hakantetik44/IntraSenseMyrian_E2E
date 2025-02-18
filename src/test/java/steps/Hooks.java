@@ -11,6 +11,7 @@ import io.qameta.allure.Allure;
 import io.qameta.allure.Attachment;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.nio.file.Files;
 
 public class Hooks {
@@ -55,9 +56,17 @@ public class Hooks {
             
             if (videoFile.exists() && videoFile.length() > 0) {
                 try {
-                    byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
-                    Allure.addAttachment("Video Recording", "video/avi", new ByteArrayInputStream(videoBytes), ".avi");
-                    System.out.println("Video attached successfully: " + videoPath + " (Size: " + videoFile.length() + " bytes)");
+                    // Attach video to Allure report using FileInputStream
+                    try (FileInputStream fis = new FileInputStream(videoFile)) {
+                        Allure.addAttachment(
+                            "Test Recording", 
+                            "video/x-msvideo",  // Correct MIME type for AVI
+                            fis,
+                            ".avi"
+                        );
+                    }
+                    System.out.println("Video attached successfully: " + videoPath + 
+                                     " (Size: " + videoFile.length() + " bytes)");
                 } catch (Exception e) {
                     System.out.println("Failed to attach video: " + e.getMessage());
                     e.printStackTrace();
