@@ -5,6 +5,7 @@ pipeline {
         JAVA_HOME = tool 'JDK17'
         PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
         ALLURE_HOME = tool 'Allure'
+        XRAY_CREDENTIALS = credentials('xray-api-key')
     }
 
     tools {
@@ -49,10 +50,12 @@ pipeline {
                             if ! command -v ffmpeg &> /dev/null; then
                                 echo "📥 Installing FFmpeg..."
                                 if [[ "$OSTYPE" == "darwin"* ]]; then
-                                    echo "🍎 macOS detected, using Homebrew..."
-                                    brew install ffmpeg
+                                    echo "🍎 macOS detected..."
+                                    which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                                    export PATH="/usr/local/bin:$PATH"
+                                    brew install ffmpeg || true
                                 else
-                                    echo "🐧 Linux detected, using apt..."
+                                    echo "🐧 Linux detected..."
                                     sudo apt-get update && sudo apt-get install -y ffmpeg
                                 fi
                             fi
@@ -115,8 +118,8 @@ pipeline {
 
         stage('📤 Generate Xray Results') {
             steps {
-                withCredentials([string(credentialsId: 'xray-api-key', variable: 'XRAY_API_KEY')]) {
-                    script {
+                script {
+                    try {
                         sh """
                             echo "🔍 Checking test results..."
                             if [ ! -f "target/cucumber-reports/cucumber.json" ]; then
@@ -126,8 +129,19 @@ pipeline {
                             
                             echo "📤 Uploading results to Xray Test Execution: SMF-2"
                             echo "🔑 Authenticating with Xray..."
-                            curl -v -H "Content-Type: application/json" \
-                                 -H "Authorization: Bearer ${XRAY_API_KEY}" \
+                            
+                            # Get Xray API token
+                            XRAY_TOKEN=\$(curl -H "Content-Type: application/json" -X POST --data @- https://xray.cloud.getxray.app/api/v2/authenticate <<EOF
+                            {
+                                "client_id": "${XRAY_CREDENTIALS_USR}",
+                                "client_secret": "${XRAY_CREDENTIALS_PSW}"
+                            }
+                            EOF
+                            )
+                            
+                            # Upload test results
+                            curl -H "Content-Type: application/json" \
+                                 -H "Authorization: Bearer \$XRAY_TOKEN" \
                                  -X POST \
                                  --data @target/cucumber-reports/cucumber.json \
                                  "https://xray.cloud.getxray.app/api/v2/import/execution/cucumber/SMF-2" 2>&1 | tee xray-response.log
@@ -143,6 +157,9 @@ pipeline {
                         
                         echo "📋 Archiving Xray response..."
                         archiveArtifacts artifacts: 'xray-response.log', allowEmptyArchive: true
+                    } catch (Exception e) {
+                        echo "⚠️ Xray upload failed: ${e.message}"
+                        unstable "❌ Xray upload failed"
                     }
                 }
             }
