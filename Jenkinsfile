@@ -8,6 +8,9 @@ pipeline {
 
     environment {
         GITHUB_REPO = 'https://github.com/hakantetik44/IntraSenseMyrian_E2E.git'
+        JAVA_HOME = tool 'JDK17'
+        PATH = "${env.JAVA_HOME}/bin:${tool 'maven'}/bin:${env.PATH}"
+        MAVEN_OPTS = "-Duser.home=${env.WORKSPACE}"
     }
 
     options {
@@ -15,27 +18,46 @@ pipeline {
         timeout(time: 1, unit: 'HOURS')
         // Aynı anda sadece bir build çalıştır
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
     stages {
-        stage('Initialize') {
+        stage('Checkout') {
+            steps {
+                cleanWs()
+                git branch: 'main',
+                    url: env.GITHUB_REPO,
+                    credentialsId: 'github-credentials'
+            }
+        }
+
+        stage('Setup Environment') {
             steps {
                 script {
-                    // Workspace'i temizle
-                    cleanWs()
-                    // Repository'yi çek
-                    checkout scm
+                    try {
+                        sh '''
+                            echo "JAVA_HOME: $JAVA_HOME"
+                            echo "PATH: $PATH"
+                            java -version
+                            mvn -version
+                            git --version
+                        '''
+                    } catch (Exception e) {
+                        error "Environment setup failed: ${e.message}"
+                    }
                 }
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                script {
-                    try {
-                        sh 'mvn clean install -DskipTests'
-                    } catch (Exception e) {
-                        error "Dependencies yüklenemedi: ${e.message}"
+                withMaven(maven: 'maven', jdk: 'JDK17') {
+                    script {
+                        try {
+                            sh 'mvn clean install -DskipTests'
+                        } catch (Exception e) {
+                            error "Dependencies installation failed: ${e.message}"
+                        }
                     }
                 }
             }
@@ -43,32 +65,26 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                script {
-                    try {
-                        sh """
-                            # Test klasörlerini oluştur
-                            mkdir -p target/cucumber-reports
-                            mkdir -p target/allure-results
-                            mkdir -p target/videos
-                            mkdir -p target/screenshots
-
-                            # FFmpeg'in yüklü olduğunu kontrol et
-                            if ! command -v ffmpeg &> /dev/null; then
-                                echo "FFmpeg bulunamadı. Yükleniyor..."
-                                if [[ "$OSTYPE" == "darwin"* ]]; then
-                                    brew install ffmpeg
-                                elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-                                    sudo apt-get update && sudo apt-get install -y ffmpeg
+                withMaven(maven: 'maven', jdk: 'JDK17') {
+                    script {
+                        try {
+                            sh '''
+                                mkdir -p target/{cucumber-reports,allure-results,videos,screenshots}
+                                
+                                if ! command -v ffmpeg &> /dev/null; then
+                                    echo "Installing FFmpeg..."
+                                    if [[ "$OSTYPE" == "darwin"* ]]; then
+                                        brew install ffmpeg
+                                    else
+                                        sudo apt-get update && sudo apt-get install -y ffmpeg
+                                    fi
                                 fi
-                            fi
-
-                            # Testleri çalıştır
-                            mvn clean test
-                        """
-                        currentBuild.result = 'SUCCESS'
-                    } catch (Exception e) {
-                        currentBuild.result = 'UNSTABLE'
-                        echo "Test execution failed: ${e.message}"
+                                
+                                mvn clean test
+                            '''
+                        } catch (Exception e) {
+                            unstable "Test execution failed: ${e.message}"
+                        }
                     }
                 }
             }
@@ -76,31 +92,45 @@ pipeline {
 
         stage('Generate Reports') {
             steps {
-                script {
-                    try {
-                        sh """
-                            # Report klasörlerini oluştur
-                            mkdir -p test-reports
+                withMaven(maven: 'maven', jdk: 'JDK17', mavenOpts: '-Duser.home=${WORKSPACE}') {
+                    script {
+                        try {
+                            sh '''
+                                mkdir -p test-reports
+                                cp -r target/cucumber-reports/* test-reports/ || true
+                                cp -r target/surefire-reports test-reports/ || true
+                                cp -r target/allure-results test-reports/ || true
+                                zip -r test-reports.zip test-reports/
+                            '''
                             
-                            # Raporları kopyala
-                            cp -r target/cucumber-reports/* test-reports/ || true
-                            cp -r target/surefire-reports test-reports/ || true
-                            cp -r target/allure-results test-reports/ || true
+                            // Allure CLI kullanarak rapor oluştur
+                            sh '''
+                                ALLURE_VERSION="2.25.0"
+                                ALLURE_PATH="${WORKSPACE}/allure-${ALLURE_VERSION}"
+                                
+                                # Allure CLI'yi indir ve kur
+                                if [ ! -d "${ALLURE_PATH}" ]; then
+                                    curl -o allure.tgz -Ls https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/${ALLURE_VERSION}/allure-commandline-${ALLURE_VERSION}.tgz
+                                    tar -xzf allure.tgz -C "${WORKSPACE}"
+                                    rm allure.tgz
+                                fi
+                                
+                                # Allure raporu oluştur
+                                ${ALLURE_PATH}/bin/allure generate target/allure-results --clean -o allure-report
+                            '''
                             
-                            # Raporları arşivle
-                            zip -r test-reports.zip test-reports/
-                        """
-                        
-                        // Allure raporu oluştur
-                        allure([
-                            includeProperties: false,
-                            jdk: '',
-                            properties: [],
-                            reportBuildPolicy: 'ALWAYS',
-                            results: [[path: 'target/allure-results']]
-                        ])
-                    } catch (Exception e) {
-                        echo "Report generation failed: ${e.message}"
+                            publishHTML([
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'allure-report',
+                                reportFiles: 'index.html',
+                                reportName: 'Allure Report',
+                                reportTitles: ''
+                            ])
+                        } catch (Exception e) {
+                            echo "Report generation failed: ${e.message}"
+                        }
                     }
                 }
             }
@@ -173,25 +203,22 @@ pipeline {
     post {
         always {
             script {
-                // Allure raporunu aç
                 try {
-                    sh 'mvn allure:serve -Dallure.serve.port=8080'
+                    // Allure raporu zaten oluşturuldu, sadece temizlik yap
+                    cleanWs()
                 } catch (Exception e) {
-                    echo "Failed to serve Allure report: ${e.message}"
+                    echo "Workspace cleanup failed: ${e.message}"
                 }
-                
-                // Workspace'i temizle
-                cleanWs()
             }
         }
         success {
-            echo "✅ Pipeline başarıyla tamamlandı"
+            echo "✅ Pipeline completed successfully"
         }
         failure {
-            echo "❌ Pipeline başarısız oldu"
+            echo "❌ Pipeline failed"
         }
         unstable {
-            echo "⚠️ Pipeline kararsız durumda"
+            echo "⚠️ Pipeline is unstable"
         }
     }
 } 
