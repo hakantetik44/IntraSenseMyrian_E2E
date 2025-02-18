@@ -65,20 +65,24 @@ pipeline {
                             reportTitle: 'Intrasense Web UI Test Report'
                         )
                         
-                        // Generate Allure Report
+                        // Generate and Publish Allure Report
                         allure([
                             includeProperties: false,
                             jdk: '',
-                            properties: [
-                                [key: 'allure.results.directory', value: 'target/allure-results']
-                            ],
-                            reportBuildPolicy: 'ALWAYS',
                             results: [[path: 'target/allure-results']],
                             report: true
                         ])
-
-                        // Publish Allure Report
-                        allureReport()
+                        
+                        // Publish Allure Reports
+                        publishHTML([
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: 'target/allure-report',
+                            reportFiles: 'index.html',
+                            reportName: 'Allure Report',
+                            reportTitles: 'Allure Report'
+                        ])
                         
                         // Archive test artifacts
                         archiveArtifacts(
