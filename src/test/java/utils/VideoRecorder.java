@@ -43,17 +43,17 @@ public class VideoRecorder {
             Rectangle screenBounds = gc.getBounds();
             System.out.println("[VideoRecorder] Screen dimensions: " + screenBounds.width + "x" + screenBounds.height);
 
-            // Configure the recorder
+            // Configure the recorder with improved settings
             screenRecorder = new ScreenRecorder(
                 gc,
-                screenBounds,  // Record full screen
+                screenBounds,
                 new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
                 new Format(MediaTypeKey, MediaType.VIDEO, 
                     EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
                     CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
                     DepthKey, 24,
-                    FrameRateKey, Rational.valueOf(20),
-                    QualityKey, 1.0f,
+                    FrameRateKey, Rational.valueOf(15),  // Reduced frame rate for better stability
+                    QualityKey, 0.8f,  // Slightly reduced quality for better performance
                     KeyFrameIntervalKey, 15 * 60),
                 new Format(MediaTypeKey, MediaType.VIDEO, 
                     EncodingKey, "black",
@@ -64,9 +64,9 @@ public class VideoRecorder {
                 @Override
                 protected File createMovieFile(Format fileFormat) throws IOException {
                     String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-                    File aviFile = new File(movieFolder, safeTestName + "_temp.avi");
+                    File aviFile = new File(movieFolder, safeTestName + ".avi");
                     currentVideoPath = aviFile.getAbsolutePath();
-                    System.out.println("[VideoRecorder] Creating temporary AVI file: " + currentVideoPath);
+                    System.out.println("[VideoRecorder] Creating AVI file: " + currentVideoPath);
                     return aviFile;
                 }
             };
@@ -97,81 +97,46 @@ public class VideoRecorder {
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
             isRecording = false;
             screenRecorder.stop();
-            
-            // Convert AVI to MP4
-            File aviFile = new File(currentVideoPath);
-            File mp4File = new File("target/videos/" + safeTestName + ".mp4");
-            
-            System.out.println("[VideoRecorder] Checking temporary AVI file: " + aviFile.getAbsolutePath());
-            System.out.println("[VideoRecorder] AVI file exists: " + aviFile.exists());
-            if (aviFile.exists()) {
-                System.out.println("[VideoRecorder] AVI file size: " + aviFile.length() + " bytes");
+
+            // Get the source AVI file
+            File sourceFile = new File(currentVideoPath);
+            if (!sourceFile.exists() || sourceFile.length() == 0) {
+                System.out.println("[VideoRecorder] Warning: Source video file is empty or does not exist: " + currentVideoPath);
+                return;
             }
+
+            // Convert AVI to MP4 using FFmpeg
+            File targetFile = new File("target/videos/" + safeTestName + ".mp4");
+            String ffmpegCommand = String.format("ffmpeg -i %s -c:v libx264 -preset ultrafast -crf 23 %s",
+                    sourceFile.getAbsolutePath(), targetFile.getAbsolutePath());
+
+            Process process = Runtime.getRuntime().exec(ffmpegCommand);
             
-            if (aviFile.exists() && aviFile.length() > 0) {
-                try {
-                    System.out.println("[VideoRecorder] Converting AVI to MP4...");
-                    
-                    // Use FFmpeg to convert AVI to MP4 with better settings
-                    ProcessBuilder processBuilder = new ProcessBuilder(
-                        "ffmpeg",
-                        "-i", aviFile.getAbsolutePath(),
-                        "-c:v", "libx264",
-                        "-crf", "23",  // Better quality
-                        "-preset", "veryfast",  // Faster encoding
-                        "-movflags", "+faststart",  // Better streaming
-                        "-pix_fmt", "yuv420p",
-                        "-y",  // Overwrite output file if it exists
-                        mp4File.getAbsolutePath()
-                    );
-                    
-                    processBuilder.redirectErrorStream(true);
-                    Process process = processBuilder.start();
-                    
-                    // Read and log FFmpeg output
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            System.out.println("[FFmpeg] " + line);
-                        }
-                    }
-                    
-                    // Wait for conversion to complete
-                    int exitCode = process.waitFor();
-                    System.out.println("[VideoRecorder] FFmpeg conversion exit code: " + exitCode);
-                    
-                    // Verify conversion result
-                    if (mp4File.exists() && mp4File.length() > 0) {
-                        aviFile.delete();
-                        System.out.println("[VideoRecorder] Video converted successfully: " + mp4File.getAbsolutePath() + 
-                                         " (Size: " + mp4File.length() + " bytes)");
-                    } else {
-                        System.out.println("[VideoRecorder] Failed to convert video. MP4 file not created or empty.");
-                        // Try to preserve the AVI file if MP4 conversion fails
-                        File fallbackFile = new File("target/videos/" + safeTestName + ".avi");
-                        if (aviFile.renameTo(fallbackFile)) {
-                            System.out.println("[VideoRecorder] Preserved original AVI file: " + fallbackFile.getAbsolutePath());
-                        }
-                    }
-                } catch (Exception e) {
-                    System.out.println("[VideoRecorder] Failed to convert video: " + e.getMessage());
-                    e.printStackTrace();
-                    // Try to preserve the AVI file if conversion fails
-                    File fallbackFile = new File("target/videos/" + safeTestName + ".avi");
-                    if (aviFile.renameTo(fallbackFile)) {
-                        System.out.println("[VideoRecorder] Preserved original AVI file: " + fallbackFile.getAbsolutePath());
-                    }
+            // Log FFmpeg output for debugging
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[FFmpeg] " + line);
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                System.out.println("[VideoRecorder] Successfully converted video to MP4: " + targetFile.getAbsolutePath());
+                // Delete the original AVI file after successful conversion
+                if (sourceFile.delete()) {
+                    System.out.println("[VideoRecorder] Deleted original AVI file");
                 }
             } else {
-                System.out.println("[VideoRecorder] No temporary AVI file found or file is empty");
+                System.out.println("[VideoRecorder] Failed to convert video. FFmpeg exit code: " + exitCode);
             }
 
         } catch (Exception e) {
-            System.out.println("[VideoRecorder] Failed to stop recording: " + e.getMessage());
+            System.out.println("[VideoRecorder] Error during video recording cleanup: " + e.getMessage());
             e.printStackTrace();
         } finally {
             screenRecorder = null;
             currentVideoPath = null;
         }
     }
-} 
+}

@@ -47,49 +47,11 @@ public class Hooks {
             // Stop video recording
             VideoRecorder.stopRecording(testName);
             
-            // Wait a bit for the file to be fully written
-            Thread.sleep(2000);
+            // Wait for video processing
+            Thread.sleep(3000);
             
-            // Save video recording
-            String mp4Path = "target/videos/" + testName + ".mp4";
-            String aviPath = "target/videos/" + testName + ".avi";
-            File mp4File = new File(mp4Path);
-            File aviFile = new File(aviPath);
-            
-            // Try MP4 first, fallback to AVI if MP4 doesn't exist
-            File videoFile = mp4File.exists() ? mp4File : (aviFile.exists() ? aviFile : null);
-            
-            if (videoFile != null && videoFile.length() > 0) {
-                try {
-                    byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
-                    String mimeType = mp4File.exists() ? "video/mp4" : "video/x-msvideo";
-                    String extension = mp4File.exists() ? "mp4" : "avi";
-                    
-                    // Create HTML5 video player markup
-                    String videoHtml = String.format(
-                        "<video width='100%%' height='100%%' controls>" +
-                        "<source src='data:%s;base64,%s' type='%s'>" +
-                        "Your browser does not support the video tag." +
-                        "</video>",
-                        mimeType,
-                        java.util.Base64.getEncoder().encodeToString(videoBytes),
-                        mimeType
-                    );
-                    
-                    // Attach as HTML
-                    Allure.addAttachment("Test Recording", "text/html", videoHtml, ".html");
-                    
-                    System.out.println("Video attached successfully: " + videoFile.getAbsolutePath() + 
-                                     " (Size: " + videoFile.length() + " bytes)");
-                } catch (Exception e) {
-                    System.out.println("Failed to attach video: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            } else {
-                System.out.println("Video file not found or empty. Checked paths:");
-                System.out.println("- MP4: " + mp4Path);
-                System.out.println("- AVI: " + aviPath);
-            }
+            // Try to attach video recording
+            attachVideo(testName);
             
             // Add test result status
             if (scenario.isFailed()) {
@@ -101,9 +63,8 @@ public class Hooks {
             }
             
         } catch (Exception e) {
-            System.out.println("Failed to capture evidence: " + e.getMessage());
+            System.out.println("Error in afterScenario hook: " + e.getMessage());
             e.printStackTrace();
-            saveTestStatus("⚠️ Evidence Capture Failed: " + e.getMessage());
         } finally {
             // Close browser
             if (driverManager.getDriver() != null) {
@@ -111,14 +72,53 @@ public class Hooks {
             }
         }
     }
-
-    @Attachment(value = "Screenshot", type = "image/png")
-    private byte[] saveScreenshot(String scenarioName) {
-        return ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
+    
+    private void attachVideo(String testName) {
+        try {
+            File mp4File = new File("target/videos/" + testName + ".mp4");
+            
+            if (mp4File.exists() && mp4File.length() > 0) {
+                byte[] videoBytes = Files.readAllBytes(mp4File.toPath());
+                
+                // Attach video using both methods for better compatibility
+                // Method 1: Direct attachment
+                Allure.addAttachment("Test Recording", "video/mp4", 
+                    new ByteArrayInputStream(videoBytes), ".mp4");
+                
+                // Method 2: HTML5 player
+                String videoHtml = String.format(
+                    "<video width='100%%' height='100%%' controls autoplay>" +
+                    "<source src='data:video/mp4;base64,%s' type='video/mp4'>" +
+                    "Your browser does not support the video tag." +
+                    "</video>",
+                    java.util.Base64.getEncoder().encodeToString(videoBytes)
+                );
+                
+                Allure.addAttachment("Test Recording (HTML5 Player)", "text/html", videoHtml, ".html");
+                
+                System.out.println("Video attached successfully: " + mp4File.getAbsolutePath() + 
+                                 " (Size: " + mp4File.length() + " bytes)");
+            } else {
+                System.out.println("Video file not found or empty: " + mp4File.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to attach video: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
-
+    
+    @Attachment(value = "Screenshot", type = "image/png")
+    private byte[] saveScreenshot(String name) {
+        try {
+            return ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
+        } catch (Exception e) {
+            System.out.println("Failed to take screenshot: " + e.getMessage());
+            return null;
+        }
+    }
+    
     @Attachment(value = "Test Status", type = "text/plain")
     private String saveTestStatus(String message) {
         return message;
     }
-} 
+}
