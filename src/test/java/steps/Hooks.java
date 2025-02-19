@@ -12,6 +12,7 @@ import io.qameta.allure.Attachment;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class Hooks {
     private final DriverManager driverManager;
@@ -24,13 +25,13 @@ public class Hooks {
     public void beforeScenario(Scenario scenario) {
         String testName = scenario.getName().replaceAll("\\s+", "_");
         
-        // Start video recording before test begins
-        VideoRecorder.startRecording(driverManager.getDriver(), testName);
-        
         // Add scenario info to Allure report
         Allure.epic("Intrasense E2E Tests");
         Allure.feature(scenario.getId().split(";")[0].replace("-", " "));
         Allure.story(scenario.getName());
+        
+        // Start video recording
+        VideoRecorder.startRecording(driverManager.getDriver(), testName);
     }
     
     @After
@@ -46,31 +47,34 @@ public class Hooks {
             // Stop video recording
             VideoRecorder.stopRecording(testName);
             
-            // Wait for video processing
+            // Wait for video file to be fully written
             Thread.sleep(2000);
             
-            // Attach video recording
-            File videoFile = new File("target/videos/" + testName + ".mp4");
-            if (videoFile.exists() && videoFile.length() > 0) {
-                try {
+            // Get video file path
+            String videoPath = VideoRecorder.getCurrentVideoPath();
+            if (videoPath != null) {
+                File videoFile = new File(videoPath);
+                if (videoFile.exists() && videoFile.length() > 0) {
+                    // Read video file
                     byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
                     
-                    // Attach as MP4 file
-                    Allure.addAttachment(
-                        "Test Recording",
-                        "video/mp4",
-                        new ByteArrayInputStream(videoBytes),
-                        "recording.mp4"
-                    );
+                    // Attach video to Allure report
+                    try (ByteArrayInputStream videoStream = new ByteArrayInputStream(videoBytes)) {
+                        Allure.addAttachment(
+                            "Test Recording",
+                            "video/mp4",
+                            videoStream,
+                            ".mp4"
+                        );
+                    }
                     
-                    System.out.println("Video attached successfully: " + videoFile.getAbsolutePath() +
+                    System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath() +
                                      " (Size: " + videoFile.length() + " bytes)");
-                } catch (Exception e) {
-                    System.out.println("Failed to attach video: " + e.getMessage());
-                    e.printStackTrace();
+                } else {
+                    System.out.println("[Hooks] Video file not found or empty: " + videoPath);
                 }
             } else {
-                System.out.println("Video file not found or empty: " + videoFile.getAbsolutePath());
+                System.out.println("[Hooks] No video path available");
             }
             
             // Add test result status
@@ -83,12 +87,16 @@ public class Hooks {
             }
             
         } catch (Exception e) {
-            System.out.println("Error in afterScenario hook: " + e.getMessage());
+            System.out.println("[Hooks] Error in afterScenario: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            // Close browser
-            if (driverManager.getDriver() != null) {
-                driverManager.getDriver().quit();
+            // Ensure browser is closed
+            try {
+                if (driverManager.getDriver() != null) {
+                    driverManager.getDriver().quit();
+                }
+            } catch (Exception e) {
+                System.out.println("[Hooks] Error closing browser: " + e.getMessage());
             }
         }
     }
@@ -98,7 +106,7 @@ public class Hooks {
         try {
             return ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
         } catch (Exception e) {
-            System.out.println("Failed to take screenshot: " + e.getMessage());
+            System.out.println("[Hooks] Failed to take screenshot: " + e.getMessage());
             return null;
         }
     }

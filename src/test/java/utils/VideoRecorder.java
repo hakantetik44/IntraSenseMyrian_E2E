@@ -1,88 +1,113 @@
 package utils;
 
+import org.monte.media.Format;
+import org.monte.media.Registry;
+import org.monte.media.math.Rational;
+import org.monte.screenrecorder.ScreenRecorder;
 import org.openqa.selenium.WebDriver;
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import static org.monte.media.FormatKeys.*;
+import static org.monte.media.VideoFormatKeys.*;
 
 public class VideoRecorder {
-    private static Process recordingProcess;
+    private static CustomScreenRecorder screenRecorder;
     private static String currentVideoPath;
-    private static boolean isRecording = false;
+
+    private static class CustomScreenRecorder extends ScreenRecorder {
+        private String fileName;
+
+        public CustomScreenRecorder(GraphicsConfiguration cfg, Rectangle captureArea, Format fileFormat,
+                                  Format screenFormat, Format mouseFormat, Format audioFormat, File movieFolder,
+                                  String fileName) throws IOException, AWTException {
+            super(cfg, captureArea, fileFormat, screenFormat, mouseFormat, audioFormat, movieFolder);
+            this.fileName = fileName;
+        }
+
+        @Override
+        protected File createMovieFile(Format fileFormat) throws IOException {
+            if (!movieFolder.exists()) {
+                movieFolder.mkdirs();
+            }
+            return new File(movieFolder, fileName);
+        }
+    }
 
     public static void startRecording(WebDriver driver, String testName) {
-        if (isRecording) {
+        if (screenRecorder != null) {
             System.out.println("[VideoRecorder] Recording already in progress");
             return;
         }
 
         try {
+            System.out.println("[VideoRecorder] Starting video recording for test: " + testName);
+            
             // Create videos directory
             File videoDir = new File("target/videos");
             if (!videoDir.exists() && !videoDir.mkdirs()) {
                 throw new IOException("Failed to create video directory: " + videoDir.getAbsolutePath());
             }
 
+            // Get screen configuration
+            GraphicsConfiguration gc = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration();
+
+            // Get screen dimensions
+            Rectangle captureArea = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+            
+            // Prepare video file name
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-            currentVideoPath = videoDir.getAbsolutePath() + File.separator + safeTestName + ".mp4";
+            String videoFileName = safeTestName + ".mp4";
+            currentVideoPath = new File(videoDir, videoFileName).getAbsolutePath();
 
-            // FFmpeg command to record screen with hardware acceleration
-            String[] command = {
-                "ffmpeg",
-                "-f", "avfoundation",  // macOS screen capture
-                "-i", "1:none",        // screen device index (usually 1 for screen, none for no audio)
-                "-framerate", "30",     // 30 fps
-                "-video_size", "1920x1080", // adjust according to your screen resolution
-                "-c:v", "h264_videotoolbox", // macOS hardware acceleration
-                "-b:v", "2M",          // video bitrate
-                "-pix_fmt", "yuv420p", // pixel format for better compatibility
-                currentVideoPath
-            };
+            // Configure and start recording
+            screenRecorder = new CustomScreenRecorder(
+                gc,
+                captureArea,
+                new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI),
+                new Format(MediaTypeKey, MediaType.VIDEO,
+                    EncodingKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
+                    CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
+                    DepthKey, 24,
+                    FrameRateKey, Rational.valueOf(10),  // Lower frame rate for stability
+                    QualityKey, 0.7f,    // Lower quality for smaller file size
+                    KeyFrameIntervalKey, 15 * 60),
+                new Format(MediaTypeKey, MediaType.VIDEO,
+                    EncodingKey, "black",
+                    FrameRateKey, Rational.valueOf(30)),
+                null,
+                videoDir,
+                videoFileName
+            );
 
-            // Start recording
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            processBuilder.redirectErrorStream(true);
-            recordingProcess = processBuilder.start();
-
-            // Start a thread to log FFmpeg output
-            new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(recordingProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        System.out.println("[FFmpeg] " + line);
-                    }
-                } catch (IOException e) {
-                    System.out.println("[VideoRecorder] Error reading FFmpeg output: " + e.getMessage());
-                }
-            }).start();
-
-            isRecording = true;
-            System.out.println("[VideoRecorder] Started recording to: " + currentVideoPath);
+            screenRecorder.start();
+            System.out.println("[VideoRecorder] Recording started successfully to: " + currentVideoPath);
 
         } catch (Exception e) {
             System.out.println("[VideoRecorder] Failed to start recording: " + e.getMessage());
             e.printStackTrace();
-            recordingProcess = null;
-            isRecording = false;
+            screenRecorder = null;
             currentVideoPath = null;
         }
     }
 
     public static void stopRecording(String testName) {
-        if (!isRecording || recordingProcess == null) {
+        if (screenRecorder == null) {
             System.out.println("[VideoRecorder] No active recording to stop");
             return;
         }
 
         try {
-            // Send 'q' command to FFmpeg to stop recording gracefully
-            Process quitProcess = Runtime.getRuntime().exec("pkill -INT -f ffmpeg");
-            quitProcess.waitFor();
-
-            // Wait for recording process to finish
-            recordingProcess.waitFor();
-
+            System.out.println("[VideoRecorder] Stopping video recording...");
+            screenRecorder.stop();
+            
+            // Verify the recording
             File videoFile = new File(currentVideoPath);
             if (videoFile.exists() && videoFile.length() > 0) {
                 System.out.println("[VideoRecorder] Recording saved successfully: " + currentVideoPath +
@@ -92,11 +117,14 @@ public class VideoRecorder {
             }
 
         } catch (Exception e) {
-            System.out.println("[VideoRecorder] Error during video recording cleanup: " + e.getMessage());
+            System.out.println("[VideoRecorder] Error stopping recording: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            isRecording = false;
-            recordingProcess = null;
+            screenRecorder = null;
         }
+    }
+
+    public static String getCurrentVideoPath() {
+        return currentVideoPath;
     }
 }
