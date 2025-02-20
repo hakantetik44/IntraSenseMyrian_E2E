@@ -16,9 +16,29 @@ import static org.monte.media.FormatKeys.*;
 import static org.monte.media.VideoFormatKeys.*;
 
 public class VideoRecorder {
-    private static ScreenRecorder screenRecorder;
-    private static File currentVideoFile;
+    private static CustomScreenRecorder screenRecorder;
     private static boolean isRecording = false;
+
+    private static class CustomScreenRecorder extends ScreenRecorder {
+        private String fileName;
+
+        public CustomScreenRecorder(GraphicsConfiguration cfg, Rectangle captureArea, Format fileFormat,
+                                  Format screenFormat, Format mouseFormat, Format audioFormat, File movieFolder,
+                                  String fileName) throws IOException, AWTException {
+            super(cfg, captureArea, fileFormat, screenFormat, mouseFormat, audioFormat, movieFolder);
+            this.fileName = fileName;
+        }
+
+        @Override
+        protected File createMovieFile(Format fileFormat) throws IOException {
+            if (!movieFolder.exists()) {
+                movieFolder.mkdirs();
+            } else if (!movieFolder.isDirectory()) {
+                throw new IOException("\"" + movieFolder + "\" is not a directory.");
+            }
+            return new File(movieFolder, fileName);
+        }
+    }
 
     public static void startRecording(WebDriver driver, String testName) {
         if (isRecording) {
@@ -49,29 +69,28 @@ public class VideoRecorder {
                 KeyFrameIntervalKey, 15 * 60);
 
             // Configure recording dimensions
-            Rectangle captureSize = new Rectangle(0, 0, 1920, 1080);
+            Rectangle captureSize = new Rectangle(0, 0, 1280, 720);
 
             // Create unique filename with timestamp
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-            currentVideoFile = new File(videoDir, safeTestName + "_" + timestamp + ".avi");
+            String videoFileName = safeTestName + "_" + timestamp + ".avi";
 
             // Create custom ScreenRecorder
-            screenRecorder = new ScreenRecorder(gc, captureSize,
+            screenRecorder = new CustomScreenRecorder(gc, captureSize,
                 fileFormat, screenFormat, null, null,
-                currentVideoFile);
+                videoDir, videoFileName);
 
             // Start recording
             screenRecorder.start();
             isRecording = true;
 
-            System.out.println("[VideoRecorder] Started recording to: " + currentVideoFile.getAbsolutePath());
+            System.out.println("[VideoRecorder] Started recording to: " + new File(videoDir, videoFileName).getAbsolutePath());
 
         } catch (Exception e) {
             System.out.println("[VideoRecorder] Failed to start recording: " + e.getMessage());
             e.printStackTrace();
             screenRecorder = null;
-            currentVideoFile = null;
             isRecording = false;
         }
     }
@@ -82,14 +101,18 @@ public class VideoRecorder {
             return null;
         }
 
+        File videoFile = null;
         try {
             // Stop recording
             screenRecorder.stop();
             
-            if (currentVideoFile != null && currentVideoFile.exists() && currentVideoFile.length() > 0) {
-                System.out.println("[VideoRecorder] Recording saved successfully: " + currentVideoFile.getAbsolutePath() +
-                                 " (Size: " + currentVideoFile.length() + " bytes)");
-                return currentVideoFile;
+            // Get the recorded file
+            videoFile = screenRecorder.getCreatedMovieFiles().get(0);
+            
+            if (videoFile != null && videoFile.exists() && videoFile.length() > 0) {
+                System.out.println("[VideoRecorder] Recording saved successfully: " + videoFile.getAbsolutePath() +
+                                 " (Size: " + videoFile.length() + " bytes)");
+                return videoFile;
             } else {
                 System.out.println("[VideoRecorder] Warning: Video file is empty or does not exist");
                 return null;

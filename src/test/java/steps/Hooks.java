@@ -11,6 +11,7 @@ import io.qameta.allure.Allure;
 import io.qameta.allure.Attachment;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.io.FileUtils;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -90,19 +91,27 @@ public class Hooks {
             File videoFile = VideoRecorder.stopRecording();
             
             if (videoFile != null && videoFile.exists()) {
-                // Attach video to Allure report
-                try (InputStream videoStream = new FileInputStream(videoFile)) {
+                try {
+                    // Read video file as byte array
+                    byte[] videoBytes = FileUtils.readFileToByteArray(videoFile);
+                    
+                    // Attach video to Allure report
                     Allure.addAttachment(
                         "Test Recording",
                         "video/avi",
-                        videoStream,
+                        new ByteArrayInputStream(videoBytes),
                         "avi"
                     );
-                    System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath());
+                    
+                    System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath() +
+                                     " (Size: " + videoBytes.length + " bytes)");
+                    
                 } catch (IOException e) {
                     System.out.println("[Hooks] Failed to attach video: " + e.getMessage());
                     e.printStackTrace();
                 }
+            } else {
+                System.out.println("[Hooks] No video file available to attach");
             }
             
             // Take screenshot if scenario fails
