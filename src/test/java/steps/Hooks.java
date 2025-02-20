@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Base64;
 
 public class Hooks {
     private final DriverManager driverManager;
@@ -95,13 +96,18 @@ public class Hooks {
                     // Read video file as byte array
                     byte[] videoBytes = FileUtils.readFileToByteArray(videoFile);
                     
-                    // Attach video to Allure report
-                    Allure.addAttachment(
-                        "Test Recording",
-                        "video/avi",
-                        new ByteArrayInputStream(videoBytes),
-                        "avi"
+                    // Create HTML5 video player
+                    String base64Video = Base64.getEncoder().encodeToString(videoBytes);
+                    String videoHtml = String.format(
+                        "<video width='100%%' height='100%%' controls>" +
+                        "<source src='data:video/mp4;base64,%s' type='video/mp4'>" +
+                        "Your browser does not support the video tag." +
+                        "</video>",
+                        base64Video
                     );
+                    
+                    // Attach video player HTML to Allure report
+                    Allure.addAttachment("Test Recording", "text/html", videoHtml, "html");
                     
                     System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath() +
                                      " (Size: " + videoBytes.length + " bytes)");

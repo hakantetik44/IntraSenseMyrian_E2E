@@ -60,12 +60,12 @@ public class VideoRecorder {
                 .getDefaultConfiguration();
 
             // Configure recording format
-            Format fileFormat = new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_AVI);
+            Format fileFormat = new Format(MediaTypeKey, MediaType.FILE, MimeTypeKey, MIME_QUICKTIME);
             Format screenFormat = new Format(MediaTypeKey, MediaType.VIDEO, EncodingKey,
-                ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
-                CompressorNameKey, ENCODING_AVI_TECHSMITH_SCREEN_CAPTURE,
+                ENCODING_QUICKTIME_JPEG,
+                CompressorNameKey, ENCODING_QUICKTIME_JPEG,
                 DepthKey, 24, FrameRateKey, Rational.valueOf(15),
-                QualityKey, 1.0f,
+                QualityKey, 0.7f,
                 KeyFrameIntervalKey, 15 * 60);
 
             // Configure recording dimensions
@@ -74,7 +74,7 @@ public class VideoRecorder {
             // Create unique filename with timestamp
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-            String videoFileName = safeTestName + "_" + timestamp + ".avi";
+            String videoFileName = safeTestName + "_" + timestamp + ".mp4";
 
             // Create custom ScreenRecorder
             screenRecorder = new CustomScreenRecorder(gc, captureSize,
