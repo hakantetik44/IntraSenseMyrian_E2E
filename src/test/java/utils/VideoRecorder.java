@@ -55,7 +55,7 @@ public class VideoRecorder {
 
             screenRecorder = new ScreenRecorder(gc, captureSize,
                 fileFormat, screenFormat, null, null,
-                new File(videoDir));
+                videoDir);
 
             // Start recording
             screenRecorder.start();
