@@ -16,7 +16,11 @@
         <cucumber.version>7.15.0</cucumber.version>
         <allure.version>2.25.0</allure.version>
         <aspectj.version>1.9.21</aspectj.version>
+        <allure.video.attachments>true</allure.video.attachments>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <video.folder>${project.build.directory}/videos</video.folder>
+    <video.resolution>1280x720</video.resolution>
+    <video.framerate>15</video.framerate>
     </properties>
 
     <repositories>
@@ -112,57 +116,20 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-                <configuration>
-                    <source>${maven.compiler.source}</source>
-                    <target>${maven.compiler.target}</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.3</version>
                 <configuration>
-                    <argLine>
-                        -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
-                    </argLine>
                     <systemProperties>
                         <property>
-                            <name>allure.results.directory</name>
-                            <value>${project.build.directory}/allure-results</value>
-                        </property>
-                        <property>
-                            <name>allure.serve.skip</name>
-                            <value>true</value>
-                        </property>
-                        <property>
-                            <name>allure.report.open</name>
-                            <value>false</value>
-                        </property>
-                        <property>
                             <name>video.folder</name>
-                            <value>${project.build.directory}/videos</value>
+                            <value>${video.folder}</value>
                         </property>
                         <property>
-                            <name>screenshot.folder</name>
-                            <value>${project.build.directory}/screenshots</value>
+                            <name>video.resolution</name>
+                            <value>${video.resolution}</value>
                         </property>
                     </systemProperties>
-                    <properties>
-                        <property>
-                            <name>listener</name>
-                            <value>io.qameta.allure.junit4.AllureJunit4</value>
-                        </property>
-                    </properties>
                 </configuration>
-                <dependencies>
-                    <dependency>
-                        <groupId>org.aspectj</groupId>
-                        <artifactId>aspectjweaver</artifactId>
-                        <version>${aspectj.version}</version>
-                    </dependency>
-                </dependencies>
             </plugin>
             <plugin>
                 <groupId>io.qameta.allure</groupId>
@@ -172,10 +139,8 @@
                     <reportVersion>${allure.version}</reportVersion>
                     <resultsDirectory>${project.build.directory}/allure-results</resultsDirectory>
                     <reportDirectory>${project.build.directory}/allure-report</reportDirectory>
-                    <serve>false</serve>
-                    <reportingOutputDirectory>${project.build.directory}/allure-report</reportingOutputDirectory>
                 </configuration>
             </plugin>
         </plugins>
     </build>
-</project> 
+</project>
