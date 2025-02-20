@@ -11,8 +11,11 @@ import io.qameta.allure.Allure;
 import io.qameta.allure.Attachment;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 public class Hooks {
     private final DriverManager driverManager;
@@ -33,86 +36,55 @@ public class Hooks {
         // Start video recording
         VideoRecorder.startRecording(driverManager.getDriver(), testName);
     }
-    
+
     @After
     public void afterScenario(Scenario scenario) {
-        String testName = scenario.getName().replaceAll("\\s+", "_");
+        // Stop video recording
+        VideoRecorder.stopRecording(scenario.getName());
         
-        try {
-            // Take screenshot if test fails
-            if (scenario.isFailed()) {
-                saveScreenshot(scenario.getName());
-            }
-            
-            // Stop video recording
-            VideoRecorder.stopRecording(testName);
-            
-            // Wait for video file to be fully written
-            Thread.sleep(2000);
-            
-            // Get video file path
-            String videoPath = VideoRecorder.getCurrentVideoPath();
-            if (videoPath != null) {
-                File videoFile = new File(videoPath);
-                if (videoFile.exists() && videoFile.length() > 0) {
-                    // Read video file
-                    byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
-                    
-                    // Attach video to Allure report
-                    try (ByteArrayInputStream videoStream = new ByteArrayInputStream(videoBytes)) {
-                        Allure.addAttachment(
-                            "Test Recording",
-                            "video/mp4",
-                            videoStream,
-                            ".mp4"
-                        );
-                    }
-                    
-                    System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath() +
-                                     " (Size: " + videoFile.length() + " bytes)");
-                } else {
-                    System.out.println("[Hooks] Video file not found or empty: " + videoPath);
-                }
-            } else {
-                System.out.println("[Hooks] No video path available");
-            }
-            
-            // Add test result status
-            if (scenario.isFailed()) {
-                Allure.label("status", "failed");
-                saveTestStatus("❌ Test Failed: " + scenario.getName());
-            } else {
-                Allure.label("status", "passed");
-                saveTestStatus("✅ Test Passed: " + scenario.getName());
-            }
-            
-        } catch (Exception e) {
-            System.out.println("[Hooks] Error in afterScenario: " + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            // Ensure browser is closed
+        // Get the video file
+        File videoFile = new File("target/videos/" + scenario.getName().replaceAll("[^a-zA-Z0-9-_]", "_") + ".mp4");
+        
+        if (videoFile.exists()) {
             try {
-                if (driverManager.getDriver() != null) {
-                    driverManager.getDriver().quit();
+                // Create videos directory in allure-results
+                File allureVideoDir = new File("target/allure-results/videos");
+                if (!allureVideoDir.exists()) {
+                    allureVideoDir.mkdirs();
                 }
+                
+                // Copy video to allure-results directory
+                String videoFileName = videoFile.getName();
+                File allureVideoFile = new File(allureVideoDir, videoFileName);
+                Files.copy(videoFile.toPath(), allureVideoFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                
+                // Create HTML5 video player markup
+                String videoHtml = String.format(
+                    "<video width='100%%' height='100%%' controls autoplay>" +
+                    "<source src='videos/%s' type='video/mp4'>" +
+                    "Your browser does not support the video tag." +
+                    "</video>",
+                    videoFileName
+                );
+                
+                // Attach video to Allure report
+                Allure.addAttachment("Test Recording", "text/html", videoHtml);
+                
+                System.out.println("[Hooks] Video attached successfully: " + videoFile.getAbsolutePath() +
+                                 " (Size: " + videoFile.length() + " bytes)");
             } catch (Exception e) {
-                System.out.println("[Hooks] Error closing browser: " + e.getMessage());
+                System.out.println("[Hooks] Failed to attach video: " + e.getMessage());
+                e.printStackTrace();
             }
         }
-    }
-    
-    @Attachment(value = "Screenshot", type = "image/png")
-    private byte[] saveScreenshot(String name) {
-        try {
-            return ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
-        } catch (Exception e) {
-            System.out.println("[Hooks] Failed to take screenshot: " + e.getMessage());
-            return null;
+        
+        // Take screenshot if scenario fails
+        if (scenario.isFailed()) {
+            byte[] screenshot = ((TakesScreenshot) driverManager.getDriver()).getScreenshotAs(OutputType.BYTES);
+            Allure.addAttachment("Screenshot", "image/png", new ByteArrayInputStream(screenshot), "png");
         }
+        
+        // Quit driver
+        driverManager.quitDriver();
     }
-    
-    @Attachment(value = "Test Status", type = "text/plain")
-    private String saveTestStatus(String message) {
-        return message;
-    }
-}
+} 
