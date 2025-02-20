@@ -9,13 +9,15 @@ import org.openqa.selenium.WebDriver;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import static org.monte.media.FormatKeys.*;
 import static org.monte.media.VideoFormatKeys.*;
 
 public class VideoRecorder {
     private static ScreenRecorder screenRecorder;
-    private static String currentVideoPath;
+    private static File currentVideoFile;
     private static boolean isRecording = false;
 
     public static void startRecording(WebDriver driver, String testName) {
@@ -49,51 +51,54 @@ public class VideoRecorder {
             // Configure recording dimensions
             Rectangle captureSize = new Rectangle(0, 0, 1920, 1080);
 
-            // Create and configure screen recorder
+            // Create unique filename with timestamp
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String safeTestName = testName.replaceAll("[^a-zA-Z0-9-_]", "_");
-            currentVideoPath = new File(videoDir, safeTestName + ".mp4").getAbsolutePath();
+            currentVideoFile = new File(videoDir, safeTestName + "_" + timestamp + ".avi");
 
+            // Create custom ScreenRecorder
             screenRecorder = new ScreenRecorder(gc, captureSize,
                 fileFormat, screenFormat, null, null,
-                videoDir);
+                currentVideoFile);
 
             // Start recording
             screenRecorder.start();
             isRecording = true;
 
-            System.out.println("[VideoRecorder] Started recording to: " + currentVideoPath);
+            System.out.println("[VideoRecorder] Started recording to: " + currentVideoFile.getAbsolutePath());
 
         } catch (Exception e) {
             System.out.println("[VideoRecorder] Failed to start recording: " + e.getMessage());
             e.printStackTrace();
             screenRecorder = null;
+            currentVideoFile = null;
             isRecording = false;
-            currentVideoPath = null;
         }
     }
 
-    public static void stopRecording(String testName) {
+    public static File stopRecording() {
         if (!isRecording || screenRecorder == null) {
             System.out.println("[VideoRecorder] No active recording to stop");
-            return;
+            return null;
         }
 
         try {
             // Stop recording
             screenRecorder.stop();
             
-            // Get the recorded file
-            File videoFile = new File(currentVideoPath);
-            if (videoFile.exists() && videoFile.length() > 0) {
-                System.out.println("[VideoRecorder] Recording saved successfully: " + currentVideoPath +
-                                 " (Size: " + videoFile.length() + " bytes)");
+            if (currentVideoFile != null && currentVideoFile.exists() && currentVideoFile.length() > 0) {
+                System.out.println("[VideoRecorder] Recording saved successfully: " + currentVideoFile.getAbsolutePath() +
+                                 " (Size: " + currentVideoFile.length() + " bytes)");
+                return currentVideoFile;
             } else {
-                System.out.println("[VideoRecorder] Warning: Video file is empty or does not exist: " + currentVideoPath);
+                System.out.println("[VideoRecorder] Warning: Video file is empty or does not exist");
+                return null;
             }
 
         } catch (Exception e) {
             System.out.println("[VideoRecorder] Error during video recording cleanup: " + e.getMessage());
             e.printStackTrace();
+            return null;
         } finally {
             isRecording = false;
             screenRecorder = null;
